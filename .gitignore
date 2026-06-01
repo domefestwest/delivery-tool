@@ -33,3 +33,4 @@ npm-debug.log*
 # The ffmpeg binaries are large but MUST be committed — they're the bundled distribution
 # So we do NOT gitignore ffmpeg/
 build/
+build-resources/

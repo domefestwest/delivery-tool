@@ -12,18 +12,36 @@
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:win": "npm run build && electron-builder --win",
     "dist:linux": "npm run build && electron-builder --linux",
+    "release": "npm run build && electron-builder --publish always",
     "test": "node test/cross-platform.test.js"
   },
   "build": {
     "appId": "com.domefestwest.delivery-tool",
     "productName": "Dome Fest West Delivery Tool",
     "copyright": "Copyright © 2027 Dome Fest West",
+    "extends": null,
+    "asar": true,
+    "directories": {
+      "buildResources": "build-resources",
+      "output": "dist"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "domefestwest",
+        "repo": "delivery-tool",
+        "releaseType": "release"
+      }
+    ],
     "files": [
       "build/**/*",
       "main.js",
       "preload.js",
+      "src-main/**/*",
       "dfw_config.json",
-      "node_modules/**/*"
+      "node_modules/**/*",
+      "!node_modules/electron/dist/**/*",
+      "!**/{.eslintrc.js,jest.config.js,.gitignore,.npmignore}"
     ],
     "extraResources": [
       {
@@ -46,6 +64,10 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "dfw_config.json",
+        "to": "dfw_config.json"
       }
     ],
     "mac": {
@@ -59,7 +81,12 @@
           ]
         }
       ],
-      "icon": "public/icon.icns"
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "darkModeSupport": true,
+      "identity": null
+    },
+    "dmg": {
+      "writeUpdateInfo": false
     },
     "win": {
       "target": [
@@ -70,9 +97,9 @@
           ]
         }
       ],
-      "icon": "public/icon.ico",
       "requestedExecutionLevel": "asInvoker",
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "verifyUpdateCodeSignature": false
     },
     "linux": {
       "target": [
@@ -83,13 +110,12 @@
           ]
         }
       ],
-      "icon": "public/icon.png"
+      "category": "AudioVideo",
+      "artifactName": "${productName}-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "installerIcon": "public/icon.ico",
-      "uninstallerIcon": "public/icon.ico",
       "deleteAppDataOnUninstall": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
@@ -124,5 +150,9 @@
   },
   "bugs": {
     "url": "https://github.com/domefestwest/delivery-tool/issues"
+  },
+  "author": {
+    "name": "Dome Fest West",
+    "email": "Ryan@domefestwest.com"
   }
 }

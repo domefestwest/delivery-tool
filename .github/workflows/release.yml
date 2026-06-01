@@ -1,0 +1,177 @@
+name: Release Installers
+
+# Manually triggered: go to Actions → "Release Installers" → "Run workflow".
+# Builds .dmg (macOS), .exe (Windows NSIS), and .AppImage (Linux) for the
+# version currently in package.json, then publishes them to a GitHub Release.
+#
+# The auto-version-bump workflow already creates a v$VERSION tag on every push,
+# so by the time you hit "Run workflow" the tag exists. This workflow uploads
+# its built installers onto that existing tag's release.
+#
+# We use workflow_dispatch (manual) rather than tag-push triggers because:
+#   1. GITHUB_TOKEN from the bump workflow doesn't trigger downstream workflows
+#      (documented GitHub limitation — a known anti-pattern would be needed)
+#   2. Ryan controls exactly when to publish — useful in beta where not every
+#      patch bump is a public release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: 'Optional release notes (appended to auto-generated notes)'
+        required: false
+        default: ''
+      mark_prerelease:
+        description: 'Publish as pre-release (recommended for 0.x.x)'
+        required: false
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            build_cmd: 'dist:mac'
+            artifact_name: 'macos'
+          - os: windows-latest
+            build_cmd: 'dist:win'
+            artifact_name: 'windows'
+          - os: ubuntu-latest
+            build_cmd: 'dist:linux'
+            artifact_name: 'linux'
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout (with LFS for bundled FFmpeg binaries)
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify bundled FFmpeg binary present
+        shell: bash
+        run: |
+          case "${{ matrix.os }}" in
+            macos-latest)
+              ls -lh ffmpeg/mac/ffmpeg ffmpeg/mac/ffprobe
+              chmod +x ffmpeg/mac/ffmpeg ffmpeg/mac/ffprobe
+              ;;
+            windows-latest)
+              ls -lh ffmpeg/win/ffmpeg.exe ffmpeg/win/ffprobe.exe
+              ;;
+            ubuntu-latest)
+              ls -lh ffmpeg/linux/ffmpeg ffmpeg/linux/ffprobe
+              chmod +x ffmpeg/linux/ffmpeg ffmpeg/linux/ffprobe
+              ;;
+          esac
+
+      - name: Build installer (${{ matrix.build_cmd }})
+        run: npm run ${{ matrix.build_cmd }}
+        env:
+          # Disable code-signing auto-discovery — we ship unsigned for now
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # GH_TOKEN allows electron-builder to inspect/check existing releases
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List built artifacts
+        shell: bash
+        run: |
+          echo "── Contents of dist/ ──"
+          ls -lh dist/ 2>/dev/null || echo "(no dist directory)"
+          find dist -maxdepth 2 -type f | sort
+
+      - name: Upload artifacts to workflow
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.artifact_name }}
+          path: |
+            dist/*.dmg
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.yml
+            dist/*.blockmap
+            dist/latest*.yml
+          if-no-files-found: warn
+          retention-days: 30
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Read version from package.json
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Download all built installers
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts into a single dir
+        run: |
+          mkdir -p release-files
+          find artifacts -type f \
+            \( -name '*.dmg' -o -name '*.exe' -o -name '*.AppImage' \
+               -o -name '*.yml' -o -name '*.blockmap' \) \
+            -exec cp -v {} release-files/ \;
+          echo ""
+          echo "── Files to publish ──"
+          ls -lh release-files/
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Dome Fest West Delivery Tool v${{ steps.version.outputs.version }}
+          files: release-files/*
+          fail_on_unmatched_files: false
+          generate_release_notes: true
+          prerelease: ${{ github.event.inputs.mark_prerelease == 'true' }}
+          body: |
+            ## Dome Fest West Delivery Tool v${{ steps.version.outputs.version }}
+
+            **For artists:** Download the installer for your operating system below.
+
+            - **macOS** (Apple Silicon + Intel): the `.dmg` file
+            - **Windows 10/11**: the `Setup-${{ steps.version.outputs.version }}.exe` file
+            - **Linux** (x86_64): the `.AppImage` file
+
+            ### First-time install
+
+            These builds are unsigned (beta). Your OS may show a warning on first launch — see [INSTALL.md](https://github.com/domefestwest/delivery-tool/blob/main/INSTALL.md) for one-time-bypass instructions.
+
+            ### Bundled
+
+            Each installer includes FFmpeg 8.1.1 (libx265 10-bit). No separate downloads required.
+
+            ${{ github.event.inputs.release_notes }}
+
+      - name: Summary
+        run: |
+          echo "### ✅ Released v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "Installers published to [GitHub Releases](https://github.com/domefestwest/delivery-tool/releases/tag/v${{ steps.version.outputs.version }})" >> $GITHUB_STEP_SUMMARY
