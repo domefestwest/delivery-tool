@@ -1,6 +1,6 @@
 {
   "name": "dome-festival-delivery-tool",
-  "version": "0.16.1",
+  "version": "0.16.2",
   "description": "Universal H.265 10-bit delivery encoder for fulldome film festivals — config-driven, cross-platform, open source",
   "main": "main.js",
   "homepage": "./",
@@ -47,17 +47,23 @@
       {
         "from": "ffmpeg/mac",
         "to": "ffmpeg/mac",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "ffmpeg/win",
         "to": "ffmpeg/win",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "ffmpeg/linux",
         "to": "ffmpeg/linux",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "dfw_config.json",
@@ -66,7 +72,9 @@
       {
         "from": "examples",
         "to": "examples",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "mac": {
@@ -74,7 +82,10 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "artifactName": "Dome-Festival-Delivery-Tool-${version}-${arch}.${ext}",
@@ -88,7 +99,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "requestedExecutionLevel": "asInvoker",
@@ -99,7 +112,9 @@
       "target": [
         {
           "target": "AppImage",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "category": "AudioVideo",
@@ -126,8 +141,14 @@
     "wait-on": "^7.2.0"
   },
   "browserslist": {
-    "production": [">0.2%", "not dead", "not op_mini all"],
-    "development": ["last 1 chrome version"]
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version"
+    ]
   },
   "license": "MIT",
   "repository": {
