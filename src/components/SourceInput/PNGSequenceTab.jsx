@@ -158,7 +158,10 @@ export default function PNGSequenceTab({
               className="btn btn-secondary"
               onClick={() => {
                 if (manualPattern && folder) {
-                  onDataChange({ pattern: manualPattern, ffmpegPattern: folder + '/' + manualPattern, frameCount: '?', bitDepth: null });
+                  // Use window.api to build the path safely (path.join in main process)
+                  // In the renderer we approximate with the platform separator from the folder string
+                  const sep = folder.includes('\\') ? '\\' : '/';
+                  onDataChange({ pattern: manualPattern, ffmpegPattern: folder + sep + manualPattern, frameCount: '?', bitDepth: null });
                   setShowManual(false);
                 }
               }}
