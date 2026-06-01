@@ -114,11 +114,19 @@ export default function EncodePanel({
     const sourceBitDepth = sourceType === 'png' ? pngData?.bitDepth : videoData?.bitDepth;
     const audioFilesForIpc = audioStems.map(s => ({ channel: s.channel, filePath: s.filePath }));
 
+    // Total frame count — needed for ETA calculation in main process.
+    // PNG: exact count from scan. Video: derive from duration × frame rate.
+    const totalFrames = sourceType === 'png'
+      ? pngData?.frameCount
+      : (videoData?.duration && effectiveFps
+          ? Math.round(videoData.duration * effectiveFps)
+          : null);
+
     const params = {
       sourceType,
       sourcePath: sourceType === 'png' ? pngFolder : videoPath,
       ffmpegPattern: pngData?.ffmpegPattern,
-      totalFrames: pngData?.frameCount,
+      totalFrames,
       frameRate: effectiveFps,
       resolution,
       outputDir,

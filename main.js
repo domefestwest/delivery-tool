@@ -1011,15 +1011,15 @@ async function processAudio({ audioMode, audioFiles, audioInterleaved, audioFold
     }
   }
 
-  // MUX audio into video if requested
+  // MUX audio into video if requested.
+  // Strategy: mux into a temp file, then replace the audio-less original with it.
+  // Result: only ONE video file exists — the canonical name always contains audio when mux is on.
   if (muxAudio && stems.length > 0) {
-    const muxFilename = outputFilename.replace('.mp4', '_withAudio.mp4');
-    const muxPath = path.join(videoFolder, muxFilename);
+    const tempMuxPath = outputVideoPath + '.mux_tmp.mp4';
     const is51 = stems.length === 6;
     const bitrateFlag = is51 ? '384k' : '192k';
 
-    // Build mux args: combine video + all stems
-    const muxArgs = ['-i', outputVideoPath];
+    const muxArgs = ['-y', '-i', outputVideoPath];
     for (const s of stems) {
       muxArgs.push('-i', s.path);
     }
@@ -1030,13 +1030,28 @@ async function processAudio({ audioMode, audioFiles, audioInterleaved, audioFold
       muxArgs.push('-ac', '6');
       muxArgs.push('-channel_layout', '5.1');
     }
-    muxArgs.push('-y', muxPath);
+    muxArgs.push(tempMuxPath);
 
+    let muxOk = false;
     await new Promise((resolve, reject) => {
       const proc = spawn(ffmpegPath, muxArgs);
-      proc.on('close', resolve);
+      proc.on('close', (code) => { muxOk = code === 0; resolve(); });
       proc.on('error', reject);
     }).catch(err => warnings.push('MUX failed: ' + err.message));
+
+    if (muxOk && fs.existsSync(tempMuxPath)) {
+      // Replace the audio-less file with the muxed version — same canonical filename
+      try {
+        fs.unlinkSync(outputVideoPath);
+        fs.renameSync(tempMuxPath, outputVideoPath);
+      } catch (err) {
+        warnings.push('MUX file replace failed: ' + err.message);
+        // Leave temp file in place as fallback
+      }
+    } else if (fs.existsSync(tempMuxPath)) {
+      try { fs.unlinkSync(tempMuxPath); } catch (_) {}
+      warnings.push('MUX encode failed — delivery package contains video without embedded audio.');
+    }
   }
 
   return { mode: audioMode, stems, warnings };
