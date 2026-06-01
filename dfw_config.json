@@ -1,0 +1,40 @@
+{
+  "festival_name": "Dome Fest West",
+  "festival_short": "DFW",
+  "version": "2027",
+  "contact_email": "Ryan@domefestwest.com",
+  "website": "https://domefestwest.com",
+  "video": {
+    "codec": "libx265",
+    "bit_depth": 10,
+    "pix_fmt": "yuv420p10le",
+    "crf": 18,
+    "preset": "slow",
+    "x265_params": "bframes=8:ref=6:rd=6:subme=7:me=umh:b-adapt=2",
+    "container": "mp4",
+    "allowed_resolutions": [
+      { "label": "4K", "width": 4096, "height": 4096 },
+      { "label": "6K", "width": 6144, "height": 6144 },
+      { "label": "8K", "width": 8192, "height": 8192 }
+    ],
+    "allowed_framerates": [30, 60],
+    "high_res_high_fps_vbv": {
+      "trigger_resolution": "8K",
+      "trigger_framerate": 60,
+      "vbv_maxrate": 200000,
+      "vbv_bufsize": 200000
+    }
+  },
+  "audio": {
+    "preferred_format": "5.1",
+    "accepted_formats": ["5.1", "stereo"],
+    "sample_rate_khz": 44.1,
+    "ambisonics_supported": false,
+    "stems_required": true,
+    "mux_option_available": true
+  },
+  "delivery": {
+    "folder_name_template": "{FilmTitle}_DFW{Year}",
+    "max_file_size_gb": 100
+  }
+}

@@ -1,0 +1,72 @@
+name: Auto Version Bump
+
+# Bumps the patch version on every push to main.
+# The workflow commits the updated package.json back to the branch and creates a tag.
+# Every push to main automatically becomes a new versioned release.
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      # Don't trigger on the version commit itself (avoids infinite loop)
+      - 'package.json'
+
+permissions:
+  contents: write
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Use a PAT or the default GITHUB_TOKEN with write permissions
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump patch version
+        id: bump
+        run: |
+          # Read current version from package.json
+          CURRENT=$(node -p "require('./package.json').version")
+          echo "Current version: $CURRENT"
+
+          # Bump patch (e.g. 0.15.0 → 0.15.1, 0.15.9 → 0.15.10)
+          NEW=$(node -e "
+            const [major, minor, patch] = '$CURRENT'.split('.').map(Number);
+            console.log(major + '.' + minor + '.' + (patch + 1));
+          ")
+          echo "New version: $NEW"
+          echo "new_version=$NEW" >> $GITHUB_OUTPUT
+
+          # Update package.json
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = '$NEW';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+      - name: Commit and tag version bump
+        run: |
+          git add package.json
+          git commit -m "chore: bump version to v${{ steps.bump.outputs.new_version }} [skip ci]"
+          git tag "v${{ steps.bump.outputs.new_version }}"
+          git push origin main --follow-tags
+
+      - name: Summary
+        run: |
+          echo "### ✅ Version bumped to v${{ steps.bump.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY

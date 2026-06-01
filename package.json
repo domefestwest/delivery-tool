@@ -1,0 +1,119 @@
+{
+  "name": "dome-delivery-tool",
+  "version": "0.15.0",
+  "description": "Dome Fest West official film delivery and encoding tool",
+  "main": "main.js",
+  "homepage": "./",
+  "scripts": {
+    "start": "electron .",
+    "dev": "concurrently \"BROWSER=none react-scripts start\" \"wait-on http://localhost:3000 && electron .\"",
+    "build": "react-scripts build",
+    "dist": "npm run build && electron-builder",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:linux": "npm run build && electron-builder --linux"
+  },
+  "build": {
+    "appId": "com.domefestwest.delivery-tool",
+    "productName": "Dome Fest West Delivery Tool",
+    "copyright": "Copyright © 2027 Dome Fest West",
+    "files": [
+      "build/**/*",
+      "main.js",
+      "preload.js",
+      "dfw_config.json",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "ffmpeg/mac",
+        "to": "ffmpeg/mac",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "ffmpeg/win",
+        "to": "ffmpeg/win",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "ffmpeg/linux",
+        "to": "ffmpeg/linux",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.video",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "public/icon.icns"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "public/icon.ico"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "public/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "wait-on": "^7.2.0"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version"
+    ]
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/domefestwest/delivery-tool.git"
+  },
+  "bugs": {
+    "url": "https://github.com/domefestwest/delivery-tool/issues"
+  }
+}

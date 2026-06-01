@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build React app
+        run: npm run build
+
+      - name: Verify build output
+        run: |
+          ls -lh build/static/js/
+          echo "Build size: $(du -sh build | cut -f1)"
+
+      - name: Check version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "### App version: v$VERSION" >> $GITHUB_STEP_SUMMARY
