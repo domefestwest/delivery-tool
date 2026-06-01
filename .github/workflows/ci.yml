@@ -7,11 +7,12 @@ on:
     branches: [main]
 
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: false   # Skip LFS in CI — we don't need ffmpeg binaries to run tests
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -22,15 +23,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Run cross-platform test suite
+        run: npm test
+
       - name: Build React app
         run: npm run build
 
-      - name: Verify build output
-        run: |
-          ls -lh build/static/js/
-          echo "Build size: $(du -sh build | cut -f1)"
-
-      - name: Check version
+      - name: Summary
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          echo "### App version: v$VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "### ✅ Tests passed, build succeeded for v$VERSION" >> $GITHUB_STEP_SUMMARY
