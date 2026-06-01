@@ -51,6 +51,10 @@ contextBridge.exposeInMainWorld('api', {
   // Debug log export
   saveDebugLog:    (opts) => ipcRenderer.invoke('debug:save-log', opts),
 
+  // Project save/load
+  saveProject:     (state) => ipcRenderer.invoke('project:save', state),
+  openProject:     ()      => ipcRenderer.invoke('project:open'),
+
   // Encode
   startEncode:    (params) => ipcRenderer.invoke('encode:start', params),
   cancelEncode:   ()       => ipcRenderer.invoke('encode:cancel'),

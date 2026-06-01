@@ -30,6 +30,8 @@ export default function SourcePreview({
   videoPath, videoData, videoFrameRate,
   onVideoPathChange, onVideoDataChange, onVideoFrameRateChange,
   onFrameRateWarning, frameRateWarning,
+  // Project load (for the empty-state quick action)
+  onOpenProject,
 }) {
   const [dragActive, setDragActive] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -203,6 +205,18 @@ export default function SourcePreview({
                 Browse PNGs…
               </button>
             </div>
+            {onOpenProject && (
+              <div style={{ marginTop: 14, fontSize: 11, color: '#444' }}>
+                — or —{' '}
+                <button
+                  onClick={onOpenProject}
+                  className="text-btn"
+                  title="Open a .dfwproj file"
+                >
+                  📂 Open a saved project
+                </button>
+              </div>
+            )}
           </div>
         )}
 

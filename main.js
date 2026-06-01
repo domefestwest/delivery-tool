@@ -23,6 +23,7 @@ const { probeAndVerify }      = require('./src-main/output-verification');
 const { analyzeLoudness, classifyLoudness, analyzeMix } = require('./src-main/loudness');
 const { zipDeliveryFolder }   = require('./src-main/zip-package');
 const { generateThumbnail, cleanupOldThumbnails } = require('./src-main/preview-generator');
+const { saveProject, loadProject } = require('./src-main/project-io');
 const settingsStore           = require('./src-main/settings-store');
 const {
   computeMd5,
@@ -432,6 +433,30 @@ ipcMain.handle('settings:update', (_, partial) => {
 
 ipcMain.handle('settings:recent-add', (_, entry) => {
   return settingsStore.addRecentEncode(app.getPath('userData'), entry);
+});
+
+// ─── IPC: Project save/load (.dfwproj files) ──────────────────────────────────
+
+ipcMain.handle('project:save', async (_, state) => {
+  const filmTitle = (state?.filmTitle || 'Untitled').trim();
+  const safeName = filmTitle.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const save = await dialog.showSaveDialog(mainWindow, {
+    title: 'Save Project',
+    defaultPath: `${safeName}.dfwproj`,
+    filters: [{ name: 'DFW Project', extensions: ['dfwproj'] }],
+  });
+  if (save.canceled || !save.filePath) return { canceled: true };
+  return saveProject(save.filePath, state, getAppVersion());
+});
+
+ipcMain.handle('project:open', async () => {
+  const open = await dialog.showOpenDialog(mainWindow, {
+    title: 'Open Project',
+    filters: [{ name: 'DFW Project', extensions: ['dfwproj'] }],
+    properties: ['openFile'],
+  });
+  if (open.canceled || !open.filePaths.length) return { canceled: true };
+  return loadProject(open.filePaths[0]);
 });
 
 // ─── IPC: Save debug log ──────────────────────────────────────────────────────

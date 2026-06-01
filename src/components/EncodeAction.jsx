@@ -43,14 +43,14 @@ export default function EncodeAction({
   config, filmTitle, artistName,
   sourceType, pngData, pngFolder, pngFrameRate,
   videoPath, videoData, videoFrameRate,
-  resolution, outputDir,
+  selectedResolutions, outputDir,
   audioMode, audioStems, audioInterleaved, muxAudio,
   frameRateWarning, encodeReady,
   depStatus, useGPU,
   autoZip, notifyOnComplete, autoOpenFolder, preventSleep,
 }) {
   const [encoding, setEncoding] = useState(false);
-  const [result, setResult]     = useState(null);
+  const [result, setResult]     = useState(null);            // single result or { batchResults: [] }
   const [error, setError]       = useState(null);
   const [progress, setProgress] = useState(null);
   const [activeEncoder, setActiveEncoder] = useState(null);
@@ -58,9 +58,18 @@ export default function EncodeAction({
   const [showLog, setShowLog]   = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
 
+  // Batch state — when selectedResolutions.length > 1
+  const [batchIdx, setBatchIdx]     = useState(null);
+  const [batchTotal, setBatchTotal] = useState(null);
+  const [currentRes, setCurrentRes] = useState(null);
+
   const [diskCheck, setDiskCheck] = useState(null);
   const [testing, setTesting]     = useState(false);
   const [testResult, setTestResult] = useState(null);
+
+  // Use first resolution for previews/disk-check (representative).
+  const resolution = selectedResolutions?.[0] || null;
+  const isBatch = selectedResolutions?.length > 1;
 
   const startTimeRef = useRef(null);
   const timerRef     = useRef(null);
@@ -136,7 +145,7 @@ export default function EncodeAction({
     return w;
   };
 
-  const commonParams = () => {
+  const commonParams = (resForThisRun = resolution) => {
     const sourceBitDepth = sourceType === 'png' ? pngData?.bitDepth : videoData?.bitDepth;
     const totalFrames = sourceType === 'png'
       ? pngData?.frameCount
@@ -148,7 +157,7 @@ export default function EncodeAction({
       ffmpegPattern: pngData?.ffmpegPattern,
       totalFrames,
       frameRate: effectiveFps,
-      resolution, config,
+      resolution: resForThisRun, config,
       sourceBitDepth,
       sourceCodec: videoData?.codec,
       sourceFps: videoData?.fps,
@@ -161,7 +170,8 @@ export default function EncodeAction({
     if (!encodeReady || testing || encoding) return;
     setTesting(true);
     setTestResult(null);
-    const r = await window.api.testEncode(commonParams());
+    // Use first selected resolution for test
+    const r = await window.api.testEncode(commonParams(resolution));
     setTesting(false);
     setTestResult(r);
   };
@@ -171,23 +181,67 @@ export default function EncodeAction({
     setEncoding(true);
     setResult(null); setError(null); setProgress(null);
     setActiveEncoder(null); setLog(''); setElapsedMs(0); setTestResult(null);
-    const params = {
-      ...commonParams(),
-      outputDir,
-      filmTitle: filmTitle.trim(),
-      artistName: artistName.trim(),
-      audioMode,
-      audioFiles: audioStems.map(s => ({ channel: s.channel, filePath: s.filePath })),
-      audioInterleaved, muxAudio,
-      warnings: buildWarnings(),
-      autoZip, notifyOnComplete, preventSleep,
-    };
-    const r = await window.api.startEncode(params);
+
+    const queue = selectedResolutions;
+    setBatchTotal(isBatch ? queue.length : null);
+    setBatchIdx(isBatch ? 0 : null);
+
+    const batchResults = [];
+    for (let i = 0; i < queue.length; i++) {
+      const res = queue[i];
+      if (isBatch) {
+        setBatchIdx(i);
+        setCurrentRes(res);
+        setProgress(null);
+        setLog(prev => prev + `\n══ Encoding ${i + 1} of ${queue.length}: ${res.label} ══\n`);
+      }
+      const params = {
+        ...commonParams(res),
+        outputDir,
+        filmTitle: filmTitle.trim(),
+        artistName: artistName.trim(),
+        audioMode,
+        audioFiles: audioStems.map(s => ({ channel: s.channel, filePath: s.filePath })),
+        audioInterleaved, muxAudio,
+        warnings: buildWarnings(),
+        autoZip, notifyOnComplete: notifyOnComplete && (i === queue.length - 1),  // notify only on last
+        preventSleep,
+      };
+      const r = await window.api.startEncode(params);
+      batchResults.push({ resolution: res, ...r });
+      if (r.error) {
+        setError(`${res.label} failed: ${r.error}`);
+        break;
+      }
+    }
+
     setEncoding(false);
-    if (r.error) setError(r.error);
-    else {
-      setResult(r);
-      if (autoOpenFolder && r.deliveryFolder) window.api.openPath(r.deliveryFolder);
+    setBatchIdx(null);
+    setBatchTotal(null);
+    setCurrentRes(null);
+
+    if (!batchResults.length) return;
+    if (isBatch) {
+      const successes = batchResults.filter(r => r.success);
+      if (successes.length === queue.length) {
+        // All succeeded
+        setResult({ batchResults });
+        if (autoOpenFolder && successes[0]?.deliveryFolder) {
+          // Open the PARENT of the first delivery folder to see all batch outputs
+          const parent = successes[0].deliveryFolder.replace(/[\\/][^\\/]+$/, '');
+          window.api.openPath(parent);
+        }
+      } else {
+        // Partial — still surface what we got
+        setResult({ batchResults, partial: true });
+      }
+    } else {
+      // Single encode — preserve old behavior
+      const single = batchResults[0];
+      if (!single.error) {
+        setResult(single);
+        if (autoOpenFolder && single.deliveryFolder) window.api.openPath(single.deliveryFolder);
+      }
     }
   };
 
@@ -250,7 +304,7 @@ export default function EncodeAction({
   if (sourceType === 'png' && !pngData) issues.push('Source folder');
   if (sourceType === 'video' && !videoData) issues.push('Source video');
   if (frameRateWarning?.type === 'unsupported') issues.push('Frame rate unsupported');
-  if (!resolution) issues.push('Resolution');
+  if (!selectedResolutions?.length) issues.push('Resolution(s)');
   if (!effectiveFps) issues.push('Frame rate');
   if (!outputDir) issues.push('Output folder');
 
@@ -317,7 +371,9 @@ export default function EncodeAction({
             onClick={handleEncode}
             disabled={!encodeReady || encoding || testing || diskCheck?.check?.status === 'insufficient'}
           >
-            {encoding ? '⏳ Encoding…' : '▶ Encode and Package'}
+            {encoding ? '⏳ Encoding…'
+              : isBatch ? `▶ Encode ${selectedResolutions.length} resolutions`
+              : '▶ Encode and Package'}
           </button>
           {encoding && (
             <button className="btn btn-danger" onClick={handleCancel}>✕ Cancel</button>
@@ -328,6 +384,19 @@ export default function EncodeAction({
       {/* Progress */}
       {encoding && (
         <div className="encode-progress">
+          {/* Batch position indicator */}
+          {isBatch && batchTotal > 1 && (
+            <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
+              <span className="chip chip-orange">
+                Batch {(batchIdx ?? 0) + 1} of {batchTotal}
+              </span>
+              {currentRes && (
+                <span style={{ color: '#e8e8e8', fontWeight: 600 }}>
+                  Encoding {currentRes.label} ({currentRes.width}×{currentRes.height})
+                </span>
+              )}
+            </div>
+          )}
           {activeEncoder && (
             <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
               <span className={`chip ${activeEncoder.isGPU ? 'chip-green' : 'chip-blue'}`}>
@@ -409,8 +478,8 @@ export default function EncodeAction({
         </div>
       )}
 
-      {/* Success */}
-      {result && !encoding && (
+      {/* Success — single encode */}
+      {result && !encoding && !result.batchResults && (
         <div className="encode-success">
           <div className="alert alert-ok" style={{ marginBottom: 12 }}>
             ✓ <strong>Delivery package complete!</strong> Encoded in {formatElapsed(elapsedMs)}.
@@ -507,6 +576,65 @@ export default function EncodeAction({
               {BANDING_NOTE}
             </div>
           </details>
+        </div>
+      )}
+
+      {/* Success — batch encode */}
+      {result?.batchResults && !encoding && (
+        <div className="encode-success">
+          <div className={`alert ${result.partial ? 'alert-warn' : 'alert-ok'}`} style={{ marginBottom: 12 }}>
+            {result.partial
+              ? `⚠ Batch partial: ${result.batchResults.filter(b => b.success).length} of ${result.batchResults.length} resolutions completed.`
+              : `✓ All ${result.batchResults.length} resolutions complete!`}
+            {' '}Total: {formatElapsed(elapsedMs)}.
+          </div>
+
+          {result.batchResults.map((b, i) => (
+            <div key={i} style={{
+              background: 'var(--bg-1)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)', padding: '10px 14px', marginBottom: 8,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span className={`chip ${b.success ? 'chip-green' : 'chip-red'}`}>
+                  {b.success ? '✓' : '✕'} {b.resolution.label}
+                </span>
+                <span style={{ color: '#aaa', fontSize: 12 }}>
+                  {b.resolution.width}×{b.resolution.height}
+                </span>
+                {b.videoSizeBytes && (
+                  <span style={{ color: '#888', fontSize: 11 }}>{formatBytes(b.videoSizeBytes)}</span>
+                )}
+                {b.verification && !b.verification.ok && (
+                  <span className="chip chip-red" style={{ marginLeft: 4 }}>verify failed</span>
+                )}
+              </div>
+              {b.error && (
+                <div style={{ color: '#f08080', fontSize: 12, marginBottom: 6 }}>
+                  ✕ {b.error}
+                </div>
+              )}
+              {b.deliveryFolder && (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <code style={{ fontSize: 11, color: '#888', flex: 1,
+                                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {b.deliveryFolder}
+                  </code>
+                  <button className="btn btn-ghost" style={{ fontSize: 11, padding: '3px 8px' }}
+                    onClick={() => window.api.openPath(b.deliveryFolder)}>📁</button>
+                </div>
+              )}
+            </div>
+          ))}
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+            <button className="btn btn-secondary"
+              onClick={() => { setResult(null); setLog(''); setProgress(null); setActiveEncoder(null); }}>
+              New Encode
+            </button>
+            <button className="btn btn-ghost" onClick={handleSaveLog}>
+              💾 Save log
+            </button>
+          </div>
         </div>
       )}
     </div>

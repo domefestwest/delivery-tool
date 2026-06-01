@@ -38,8 +38,9 @@ export default function SettingsPanel({
   // film
   filmTitle, artistName, onTitleChange, onArtistChange,
   recentEncodes, onReplayRecent,
+  onSaveProject, onOpenProject,
   // output
-  resolution, onResolutionChange,
+  selectedResolutions, onSelectedResolutionsChange,
   outputDir, onOutputDirChange,
   // audio
   audioMode, onAudioModeChange,
@@ -92,36 +93,56 @@ export default function SettingsPanel({
       {/* ─── FILM ─── */}
       <div className="settings-section">
         <SectionLabel
-          badge={recentEncodes?.length > 0 ? (
-            <span ref={recentRef} style={{ position: 'relative' }}>
+          badge={
+            <span ref={recentRef} style={{ position: 'relative', display: 'inline-flex', gap: 4 }}>
               <button
                 className="text-btn"
                 onClick={(e) => { e.stopPropagation(); setShowRecent(!showRecent); }}
+                title="Recent encodes and project files"
               >
-                ⟲ Recent ({recentEncodes.length})
+                📁 Open ▾
               </button>
               {showRecent && (
                 <div className="popover popover-right">
-                  <div className="popover-header">Recent Encodes</div>
-                  {recentEncodes.map((r, i) => (
-                    <button
-                      key={i}
-                      className="popover-item"
-                      onClick={() => { onReplayRecent(r); setShowRecent(false); }}
-                    >
-                      <div className="popover-item-title">{r.filmTitle || '(untitled)'}</div>
-                      <div className="popover-item-sub">
-                        {r.resolution} · {r.frameRate}fps · {(r.encoder || '').replace(/\s*\(GPU\)/, '')}
-                        <span style={{ color: '#555', marginLeft: 8 }}>
-                          {formatRelativeTime(r.encodeDate)}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
+                  <div className="popover-header">Project</div>
+                  <button
+                    className="popover-item"
+                    onClick={() => { onOpenProject?.(); setShowRecent(false); }}
+                  >
+                    <div className="popover-item-title">📂 Open project file…</div>
+                    <div className="popover-item-sub">.dfwproj from a previous save</div>
+                  </button>
+                  <button
+                    className="popover-item"
+                    onClick={() => { onSaveProject?.(); setShowRecent(false); }}
+                  >
+                    <div className="popover-item-title">💾 Save current as project…</div>
+                    <div className="popover-item-sub">Pickup-where-you-left-off later</div>
+                  </button>
+                  {recentEncodes?.length > 0 && (
+                    <>
+                      <div className="popover-header">Recent Encodes</div>
+                      {recentEncodes.map((r, i) => (
+                        <button
+                          key={i}
+                          className="popover-item"
+                          onClick={() => { onReplayRecent(r); setShowRecent(false); }}
+                        >
+                          <div className="popover-item-title">{r.filmTitle || '(untitled)'}</div>
+                          <div className="popover-item-sub">
+                            {r.resolution} · {r.frameRate}fps · {(r.encoder || '').replace(/\s*\(GPU\)/, '')}
+                            <span style={{ color: '#555', marginLeft: 8 }}>
+                              {formatRelativeTime(r.encodeDate)}
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                    </>
+                  )}
                 </div>
               )}
             </span>
-          ) : null}
+          }
         >
           FILM
         </SectionLabel>
@@ -148,23 +169,50 @@ export default function SettingsPanel({
 
       {/* ─── OUTPUT ─── */}
       <div className="settings-section">
-        <SectionLabel>OUTPUT</SectionLabel>
+        <SectionLabel
+          badge={selectedResolutions?.length > 1 ? (
+            <span className="muted small">batch of {selectedResolutions.length}</span>
+          ) : null}
+        >
+          OUTPUT
+        </SectionLabel>
         <div className="settings-row" style={{ marginBottom: 8 }}>
           <div style={{ flex: 1 }}>
             <div className="segment-control compact">
-              {resolutions.map(res => (
-                <button
-                  key={res.label}
-                  className={`segment-btn ${resolution?.label === res.label ? 'active' : ''}`}
-                  onClick={() => onResolutionChange(res)}
-                  title={`${res.width}×${res.height}`}
-                >
-                  {res.label}
-                </button>
-              ))}
+              {resolutions.map(res => {
+                const isSelected = selectedResolutions?.some(r => r.label === res.label);
+                return (
+                  <button
+                    key={res.label}
+                    className={`segment-btn ${isSelected ? 'active' : ''}`}
+                    onClick={() => {
+                      const current = selectedResolutions || [];
+                      if (isSelected) {
+                        // Don't allow deselecting if it's the only one — must always have ≥1
+                        if (current.length > 1) {
+                          onSelectedResolutionsChange(current.filter(r => r.label !== res.label));
+                        }
+                      } else {
+                        // Add — preserve config order
+                        const next = resolutions.filter(r =>
+                          r.label === res.label || current.some(c => c.label === r.label));
+                        onSelectedResolutionsChange(next);
+                      }
+                    }}
+                    title={`${res.width}×${res.height} — click to ${isSelected ? 'remove' : 'add'} to batch`}
+                  >
+                    {res.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
+        {selectedResolutions?.length > 1 && (
+          <div className="muted small" style={{ marginBottom: 8 }}>
+            Will encode {selectedResolutions.map(r => r.label).join(' → ')} in sequence.
+          </div>
+        )}
         <div className="settings-row">
           <div className={`path-display compact ${outputDir ? 'has-value' : ''}`}
                title={outputDir || ''}>

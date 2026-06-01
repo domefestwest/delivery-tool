@@ -23,7 +23,9 @@ export default function App() {
   const [videoFrameRate, setVideoFrameRate] = useState(null);
   const [frameRateWarning, setFrameRateWarning] = useState(null);
 
-  const [resolution, setResolution] = useState(null);
+  // Multi-resolution support: artists can select 1 or more of 4K/6K/8K.
+  // Each selected resolution is encoded into its own delivery folder in sequence.
+  const [selectedResolutions, setSelectedResolutions] = useState([]);
   const [outputDir, setOutputDir]   = useState(null);
   const [useGPU, setUseGPU]         = useState(true);
 
@@ -62,7 +64,7 @@ export default function App() {
       }
 
       if (cfg?.video?.allowed_resolutions?.length) {
-        setResolution(cfg.video.allowed_resolutions[0]);
+        setSelectedResolutions([cfg.video.allowed_resolutions[0]]);
       }
       settingsHydrated.current = true;
     })();
@@ -102,14 +104,85 @@ export default function App() {
     if (entry.artistName) setArtistName(entry.artistName);
     if (config?.video?.allowed_resolutions) {
       const r = config.video.allowed_resolutions.find(x => x.label === entry.resolution);
-      if (r) setResolution(r);
+      if (r) setSelectedResolutions([r]);
+    }
+  }, [config]);
+
+  // ─── Project save / load ───────────────────────────────────────────────────
+  const handleSaveProject = useCallback(async () => {
+    const r = await window.api.saveProject({
+      filmTitle, artistName, sourceType,
+      pngFolder, pngFrameRate,
+      videoPath, videoFrameRate,
+      selectedResolutions, outputDir,
+      useGPU,
+      audioMode, audioStems, audioInterleaved, muxAudio,
+    });
+    if (r?.error) {
+      alert('Could not save project: ' + r.error);
+    }
+    return r;
+  }, [filmTitle, artistName, sourceType, pngFolder, pngFrameRate,
+      videoPath, videoFrameRate, selectedResolutions, outputDir,
+      useGPU, audioMode, audioStems, audioInterleaved, muxAudio]);
+
+  const handleOpenProject = useCallback(async () => {
+    const r = await window.api.openProject();
+    if (r?.canceled) return;
+    if (r?.error) {
+      alert('Could not load project: ' + r.error);
+      return;
+    }
+    if (!r.state) return;
+    const s = r.state;
+
+    setFilmTitle(s.filmTitle || '');
+    setArtistName(s.artistName || '');
+
+    if (s.source?.type === 'video') {
+      setSourceType('video');
+      setVideoPath(s.source.path || null);
+      setVideoFrameRate(s.source.frameRate || null);
+      // Re-probe to populate videoData
+      if (s.source.path) {
+        const probe = await window.api.probeVideo(s.source.path);
+        if (!probe.error) setVideoData(probe);
+      }
+    } else if (s.source?.type === 'png') {
+      setSourceType('png');
+      setPngFolder(s.source.path || null);
+      setPngFrameRate(s.source.frameRate || null);
+      if (s.source.path) {
+        const scan = await window.api.scanPngSequence(s.source.path);
+        if (!scan.error) setPngData(scan);
+      }
+    }
+
+    if (s.encode?.outputDir) setOutputDir(s.encode.outputDir);
+    if (typeof s.encode?.useGPU === 'boolean') setUseGPU(s.encode.useGPU);
+    if (s.encode?.resolutions && config?.video?.allowed_resolutions) {
+      const resolved = s.encode.resolutions
+        .map(label => config.video.allowed_resolutions.find(r => r.label === label))
+        .filter(Boolean);
+      if (resolved.length) setSelectedResolutions(resolved);
+    }
+
+    if (s.audio?.mode) setAudioMode(s.audio.mode);
+    if (s.audio?.stems) setAudioStems(s.audio.stems);
+    if (s.audio?.interleavedPath) setAudioInterleaved(s.audio.interleavedPath);
+    if (typeof s.audio?.muxAudio === 'boolean') setMuxAudio(s.audio.muxAudio);
+
+    if (r.missingPaths?.length) {
+      alert(`Project loaded with ${r.missingPaths.length} missing file(s). Re-pick them before encoding:\n\n` +
+        r.missingPaths.map(p => `• ${p.field}: ${p.path}`).join('\n'));
     }
   }, [config]);
 
   const effectiveFps = sourceType === 'png' ? pngFrameRate : videoFrameRate;
   const effectiveSource = sourceType === 'png' ? pngData : videoData;
   const encodeReady = !!(
-    filmTitle.trim() && effectiveSource && resolution &&
+    filmTitle.trim() && effectiveSource &&
+    selectedResolutions.length > 0 &&
     effectiveFps && outputDir && depStatus?.has10BitX265
   );
 
@@ -153,6 +226,7 @@ export default function App() {
             onVideoFrameRateChange={setVideoFrameRate}
             onFrameRateWarning={setFrameRateWarning}
             frameRateWarning={frameRateWarning}
+            onOpenProject={handleOpenProject}
           />
 
           <SettingsPanel
@@ -161,7 +235,10 @@ export default function App() {
             onTitleChange={setFilmTitle} onArtistChange={setArtistName}
             recentEncodes={settings?.recentEncodes || []}
             onReplayRecent={handleReplayRecent}
-            resolution={resolution} onResolutionChange={setResolution}
+            onSaveProject={handleSaveProject}
+            onOpenProject={handleOpenProject}
+            selectedResolutions={selectedResolutions}
+            onSelectedResolutionsChange={setSelectedResolutions}
             outputDir={outputDir} onOutputDirChange={setOutputDir}
             audioMode={audioMode} onAudioModeChange={setAudioMode}
             audioStems={audioStems} onAudioStemsChange={setAudioStems}
@@ -187,7 +264,7 @@ export default function App() {
           sourceType={sourceType}
           pngData={pngData} pngFolder={pngFolder} pngFrameRate={pngFrameRate}
           videoPath={videoPath} videoData={videoData} videoFrameRate={videoFrameRate}
-          resolution={resolution} outputDir={outputDir}
+          selectedResolutions={selectedResolutions} outputDir={outputDir}
           audioMode={audioMode} audioStems={audioStems}
           audioInterleaved={audioInterleaved} muxAudio={muxAudio}
           frameRateWarning={frameRateWarning}
