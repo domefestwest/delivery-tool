@@ -147,13 +147,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
-          name: Dome Fest West Delivery Tool v${{ steps.version.outputs.version }}
+          name: Dome Festival Delivery Tool v${{ steps.version.outputs.version }}
           files: release-files/*
           fail_on_unmatched_files: false
           generate_release_notes: true
           prerelease: ${{ github.event.inputs.mark_prerelease == 'true' }}
           body: |
-            ## Dome Fest West Delivery Tool v${{ steps.version.outputs.version }}
+            ## Dome Festival Delivery Tool v${{ steps.version.outputs.version }}
 
             **For artists:** Download the installer for your operating system below.
 

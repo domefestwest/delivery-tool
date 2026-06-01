@@ -1,0 +1,41 @@
+{
+  "_comment": "Example: a flagship festival that ONLY accepts 8K at 30fps masters with strict -23 LUFS audio. No stereo. No mux. Required 5.1 stems.",
+  "festival_name": "Flagship Planetarium Festival",
+  "festival_short": "FPF",
+  "version": "2027",
+  "contact_email": "deliveries@flagship.example",
+  "website": "https://flagship.example",
+  "submission_deadline": "2027-09-30T23:59:59-07:00",
+  "audio_target_lufs": -23,
+  "video": {
+    "codec": "libx265",
+    "bit_depth": 10,
+    "pix_fmt": "yuv420p10le",
+    "crf": 16,
+    "preset": "veryslow",
+    "x265_params": "bframes=8:ref=6:rd=6:subme=7:me=umh:b-adapt=2:psy-rd=2.0:aq-mode=3",
+    "container": "mp4",
+    "allowed_resolutions": [
+      { "label": "8K", "width": 8192, "height": 8192 }
+    ],
+    "allowed_framerates": [30, 60],
+    "high_res_high_fps_vbv": {
+      "trigger_resolution": "8K",
+      "trigger_framerate": 60,
+      "vbv_maxrate": 200000,
+      "vbv_bufsize": 200000
+    }
+  },
+  "audio": {
+    "preferred_format": "5.1",
+    "accepted_formats": ["5.1"],
+    "sample_rate_khz": 48,
+    "ambisonics_supported": false,
+    "stems_required": true,
+    "mux_option_available": false
+  },
+  "delivery": {
+    "folder_name_template": "{FilmTitle}_FPF{Year}",
+    "max_file_size_gb": 200
+  }
+}

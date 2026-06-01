@@ -1,191 +1,190 @@
-# Dome Fest West Delivery Tool
+# Dome Festival Delivery Tool
 
-The official film delivery and encoding application for **Dome Fest West (DFW)**. Produces correctly encoded H.265 10-bit delivery packages for Fiske's SkySkan playback system.
+> Universal H.265 10-bit delivery encoder for fulldome film festivals — config-driven, cross-platform, open source.
 
-Built on Electron + React. Designed for macOS, Windows, and Linux.
+![Status](https://img.shields.io/badge/status-beta-orange) ![License](https://img.shields.io/badge/license-MIT-blue) ![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)
 
----
+A desktop app that takes a fulldome filmmaker's source files (PNG/EXR sequences or .mp4/.mov masters) and produces a correctly-encoded delivery package — H.265 10-bit, 30 or 60fps exact, with stems, MD5 checksums, output verification, and a self-describing report.
 
-## For Artists
-
-Download the latest installer from the DFW website. Run it, follow the prompts — the app ships with FFmpeg pre-bundled. No separate installation required.
-
-If FFmpeg is missing or outdated (rare — see "Bundled FFmpeg" section below), the app will show a setup screen with platform-specific instructions.
+**Built originally for [Dome Fest West](https://domefestwest.com)**, this tool is now positioned as a community resource for **any fulldome film festival** worldwide. The encoding rules, allowed resolutions, frame rates, audio requirements, and delivery folder structure are all driven by a runtime JSON config file. Adopt the tool for your festival in an afternoon.
 
 ---
 
-## Bundled FFmpeg
+## Choose your role
 
-The app ships with static FFmpeg binaries that include `libx265` with 10-bit support. These are checked on every launch.
+- **🎬 Filmmaker submitting to a festival?** → Read [INSTALL.md](./INSTALL.md), then download the [latest installer](https://github.com/domefestwest/delivery-tool/releases/latest) for your OS.
+- **🏛 Festival organizer adopting this tool for your fest?** → Read [FESTIVALS.md](./FESTIVALS.md) for the config schema and adoption checklist; see [`examples/`](./examples/) for starter configs.
+- **🧑‍💻 Developer / contributor?** → Continue reading this document.
 
-| Platform | Source | Version | Bundled at |
-|----------|--------|---------|-----------|
-| **macOS** | [evermeet.cx](https://evermeet.cx/ffmpeg/) static build | 8.1.1 | `ffmpeg/mac/ffmpeg` + `ffmpeg/mac/ffprobe` |
-| **Windows** | [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) full static build | — | `ffmpeg/win/ffmpeg.exe` |
-| **Linux** | [johnvansickle.com](https://johnvansickle.com/ffmpeg/) static build | — | `ffmpeg/linux/ffmpeg` |
+---
 
-### Updating the bundled macOS binary
+## What it does
+
+Given an artist's source files, this tool:
+
+1. **Validates the source** — detects PNG/EXR sequence patterns, scans for missing frames (FFmpeg silently substitutes previous frames on missing files — a notorious silent-failure mode), checks bit depth, classifies frame rates strictly (30 or 60 only — drop-frame is soft-warned and conformed; 24/25/48/50 hard-rejected).
+2. **Encodes to spec** — libx265, 10-bit `yuv420p10le`, CRF 18, preset `slow`, with tuned x265-params. Optionally GPU-accelerated via VideoToolbox (macOS), NVENC/QSV/AMF (Windows), or NVENC/VA-API (Linux). Tested on a real Apple M4 Max producing 21× realtime vs 3× CPU.
+3. **Validates the output** — probes the encoded file post-encode and surfaces any deviation from the requested spec (wrong codec, downgraded bit depth, mismatched resolution, drift in frame count).
+4. **Processes audio** — accepts 6-stem 5.1, single interleaved 5.1 WAV, or stereo. Optionally splits, normalizes to 44.1kHz/24-bit PCM, optionally muxes into the video. Runs a proper EBU R 128 LUFS analysis on the full mix and flags out-of-spec loudness or true-peak clipping.
+5. **Packages the delivery** — `{FilmTitle}_{FESTIVAL}{Year}/` containing `video/`, `audio/`, `delivery_report.txt` (with MD5 checksums and full provenance), and optionally a single `.zip` for upload portals.
+6. **Stays useful while it works** — live progress bar with frame counter, encode-speed multiplier, ETA, live output file size, system-sleep prevention, and a desktop notification when done.
+
+---
+
+## Features at a glance
+
+- ✅ Bundled static FFmpeg 8.1.1 with libx265 10-bit — no separate install
+- ✅ Multi-resolution batch (encode 4K + 6K + 8K from one source in sequence)
+- ✅ Project save/load (`.domeproj`) — pickup-where-you-left-off
+- ✅ Recent encodes dropdown (replay settings from prior submissions)
+- ✅ Drag-and-drop source files / folders / audio stems
+- ✅ Auto-zip delivery package option
+- ✅ Test encode (5-second preview, opens in default player) before committing to a 4-hour job
+- ✅ Pre-flight disk-space check vs. estimated output size
+- ✅ Festival deadline countdown in header (color-coded by urgency)
+- ✅ Update notifications via GitHub Releases API
+- ✅ Debug log export for support requests
+- ✅ Keyboard shortcuts (⌘E encode, ⌘T test, ⌘S save, ⌘O open, Esc cancel)
+- ✅ Cross-platform: macOS 10.15+, Windows 10+, Linux x86_64 with glibc 2.31+
+
+---
+
+## Festival adoption — the 30-second pitch
+
+The tool ships with one festival config baked in — Dome Fest West's. But any festival can use it: write a JSON file describing your delivery requirements (allowed resolutions, frame rates, audio rules, encoding params, contact info, deadline), distribute that file to your artists along with the installer link, and they click **"Load festival config"** to switch the entire tool over to your festival's branding and rules.
+
+See **[FESTIVALS.md](./FESTIVALS.md)** for the full schema, recommended encoding spec with rationale, and a distribution checklist. See **[`examples/`](./examples/)** for ready-to-edit starter configs.
+
+---
+
+## Development setup
 
 ```bash
-# Download latest FFmpeg static build for macOS (Apple Silicon + Intel universal)
-curl -L "https://evermeet.cx/ffmpeg/ffmpeg-8.1.1.7z" -o /tmp/ffmpeg.7z
-curl -L "https://evermeet.cx/ffmpeg/ffprobe-8.1.1.7z" -o /tmp/ffprobe.7z
-
-# Extract (requires p7zip: brew install p7zip)
-7z e /tmp/ffmpeg.7z -o ffmpeg/mac/
-7z e /tmp/ffprobe.7z -o ffmpeg/mac/
-chmod +x ffmpeg/mac/ffmpeg ffmpeg/mac/ffprobe
-
-# Verify 10-bit libx265 support
-./ffmpeg/mac/ffmpeg -h encoder=libx265 2>&1 | grep yuv420p10le
-```
-
-### Updating the bundled Windows binary
-
-1. Go to [gyan.dev/ffmpeg/builds](https://www.gyan.dev/ffmpeg/builds/)
-2. Download the **`ffmpeg-release-full-shared.7z`** or **full static** build
-3. Extract `bin/ffmpeg.exe` and `bin/ffprobe.exe` into `ffmpeg/win/`
-4. Verify: `ffmpeg\win\ffmpeg.exe -h encoder=libx265 | findstr yuv420p10le`
-
-### Updating the bundled Linux binary
-
-1. Go to [johnvansickle.com/ffmpeg](https://johnvansickle.com/ffmpeg/)
-2. Download the **`ffmpeg-release-amd64-static.tar.xz`** archive
-3. Extract `ffmpeg` and `ffprobe` into `ffmpeg/linux/`
-4. Mark as executable: `chmod +x ffmpeg/linux/ffmpeg ffmpeg/linux/ffprobe`
-
-> **Why static builds?** Static FFmpeg binaries include all dependencies — libx265, libx264, libvpx, etc. — in a single file. Artists don't need to install anything separately. The app verifies `yuv420p10le` support at runtime before using the binary.
-
----
-
-## Encoding Quality
-
-The core encoding requirement is **10-bit H.265 at CRF 18** to eliminate color banding on dome projection surfaces.
-
-| Parameter | Value | Why |
-|-----------|-------|-----|
-| Codec | `libx265` | H.265/HEVC — required by SkySkan |
-| Pixel format | `yuv420p10le` | 10-bit: 1024 steps per channel (vs 256 for 8-bit) |
-| CRF | `18` | High quality floor — lower = better, never go above 20 |
-| Preset | `slow` | Best compression quality; encode time is acceptable |
-| x265-params | `bframes=8:ref=6:rd=6:subme=7:me=umh:b-adapt=2` | Tuned for quality |
-
-**8K 60fps** additionally sets `vbv-maxrate=200000:vbv-bufsize=200000`.
-
----
-
-## Development Setup
-
-```bash
-# Prerequisites: Node.js 18+, npm
+# Prerequisites: Node.js 20+, npm, git, git-lfs
 
 git clone https://github.com/domefestwest/delivery-tool.git
 cd delivery-tool
+
+# Pull the bundled FFmpeg binaries from Git LFS
+git lfs pull
+
 npm install
-
-# Download bundled FFmpeg (macOS — see above for Windows/Linux)
-curl -L "https://evermeet.cx/ffmpeg/ffmpeg-8.1.1.7z" -o /tmp/ff.7z && 7z e /tmp/ff.7z -o ffmpeg/mac/
-curl -L "https://evermeet.cx/ffmpeg/ffprobe-8.1.1.7z" -o /tmp/fp.7z && 7z e /tmp/fp.7z -o ffmpeg/mac/
-chmod +x ffmpeg/mac/ffmpeg ffmpeg/mac/ffprobe
-
-# Build React and launch Electron
 npm run build
 npm start
 ```
 
-### Dev mode (hot-reload React)
+For hot-reload React development:
 
 ```bash
-# Terminal 1: Start React dev server
+# Terminal 1
 BROWSER=none npx react-scripts start
 
-# Terminal 2: Launch Electron pointed at dev server
+# Terminal 2
 ELECTRON_START_URL=http://localhost:3000 npx electron .
 ```
 
 ---
 
-## Building Distribution Packages
+## Building distribution installers
 
 ```bash
-# All platforms (requires cross-platform toolchain)
-npm run dist
+npm run dist:mac      # .dmg (x64 + arm64)
+npm run dist:win      # .exe NSIS installer
+npm run dist:linux    # .AppImage
 
-# macOS only (.dmg)
-npm run dist:mac
-
-# Windows only (.exe NSIS installer)
-npm run dist:win
-
-# Linux only (.AppImage)
-npm run dist:linux
+npm run dist          # All platforms (requires platform-specific toolchains)
 ```
 
-### macOS notarization
-
-For public distribution, the app must be signed and notarized. Set these environment variables before building:
-
-```bash
-export APPLE_ID="your@appleid.com"
-export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"
-export APPLE_TEAM_ID="XXXXXXXXXX"
-npm run dist:mac
-```
-
-Without notarization, macOS will show a Gatekeeper warning. Artists can bypass it via **System Settings → Privacy & Security → "Open Anyway"**.
-
-### Windows SmartScreen
-
-Unsigned Windows builds trigger a SmartScreen warning on first launch. Artists click **"More info" → "Run anyway"**. Code signing with an EV certificate eliminates this. See [electron-builder code signing docs](https://www.electron.build/code-signing).
+For automated releases via GitHub Actions, push to main (which auto-bumps the patch version), then trigger **Actions → "Release Installers" → Run workflow** to build all three installers and publish them to a tagged GitHub Release.
 
 ---
 
-## Project Structure
+## Architecture
 
 ```
-dfw-delivery-tool/
-  main.js               # Electron main process — all FFmpeg/file system calls
-  preload.js            # contextBridge IPC bridge (no nodeIntegration in renderer)
-  dfw_config.json       # Default DFW festival configuration
-  ffmpeg/
-    mac/ffmpeg          # Static FFmpeg binary (macOS, evermeet.cx)
-    mac/ffprobe         # Static FFprobe binary (macOS, evermeet.cx)
-    win/ffmpeg.exe      # Static FFmpeg binary (Windows, gyan.dev)
-    linux/ffmpeg        # Static FFmpeg binary (Linux, johnvansickle.com)
-  src/
-    App.jsx             # Root React component — app state management
-    App.css             # Design tokens and global styles
-    components/
-      FestivalHeader.jsx       # Header: festival name, config loader, FFmpeg status
-      FilmInfo.jsx             # Film title + artist input fields
-      OnboardingScreen.jsx     # Shown when FFmpeg is missing/broken
-      EncodingSettings.jsx     # Resolution, output folder, audio section host
-      EncodePanel.jsx          # Encode button, progress bars, completion + report
-      SourceInput/
-        SourceInput.jsx        # Tab switcher for PNG vs video source
-        PNGSequenceTab.jsx     # PNG folder picker, pattern detection, bit depth
-        VideoFileTab.jsx       # Video file picker, ffprobe display, fps validation
-      AudioInput/
-        AudioInput.jsx         # Audio mode selector (stems / interleaved / none)
-        StemSelector.jsx       # 6-stem file picker with channel auto-detection
-        InterleaveSelector.jsx # Single 5.1 WAV picker with ambisonic detection
-  public/
-    index.html
-  package.json
+dome-festival-delivery-tool/
+├── main.js                 # Electron main process — IPC handlers + lifecycle
+├── preload.js              # contextBridge IPC exposure (no nodeIntegration)
+├── dfw_config.json         # Default shipped festival config (DFW)
+├── examples/               # Starter configs for other festivals
+├── ffmpeg/
+│   ├── mac/                # Static FFmpeg+FFprobe (evermeet.cx)
+│   ├── win/                # Static FFmpeg+FFprobe (gyan.dev)
+│   └── linux/              # Static FFmpeg+FFprobe (johnvansickle)
+├── src-main/               # Main-process pure modules (cross-platform, testable)
+│   ├── platform.js         # Single source of truth for platform decisions
+│   ├── ffmpeg-capabilities.js  # Binary probing
+│   ├── gpu-detection.js    # GPU encoder discovery
+│   ├── dependency-check.js # Orchestrates bundled → system fallback → GPU
+│   ├── encode-args.js      # Pure builder of FFmpeg argv arrays
+│   ├── audio-processor.js  # Stems + 5.1 channelsplit + mux temp-replace
+│   ├── delivery-report.js  # Report text builder
+│   ├── gap-detector.js     # Missing-frame detection in image sequences
+│   ├── output-estimate.js  # Bitrate table → predicted file size
+│   ├── disk-space.js       # fs.statfs wrapper + tight/insufficient classifier
+│   ├── output-verification.js  # Post-encode probe vs spec
+│   ├── loudness.js         # EBU R 128 LUFS analysis
+│   ├── settings-store.js   # userData JSON persistence
+│   ├── project-io.js       # .domeproj save/load
+│   ├── preview-generator.js  # FFmpeg thumbnail extraction
+│   ├── zip-package.js      # System-native zip wrapper
+│   ├── update-checker.js   # GitHub Releases API client
+│   └── utils.js            # formatBytes, formatDuration, MD5, etc.
+├── src/                    # React renderer
+│   ├── App.jsx             # Root component + global state
+│   ├── App.css             # Design tokens + layout
+│   └── components/
+│       ├── FestivalHeader.jsx
+│       ├── OnboardingScreen.jsx
+│       ├── SourcePreview.jsx    # Drop zone + thumbnail + info chips
+│       ├── SettingsPanel.jsx    # FILM / OUTPUT / AUDIO / ENCODER sections
+│       ├── EncodeAction.jsx     # Pre-flight + encode + progress + results
+│       └── AudioInput/
+│           ├── StemSelector.jsx
+│           └── InterleaveSelector.jsx
+├── test/
+│   └── cross-platform.test.js   # 98 unit tests covering all pure modules
+├── .github/workflows/
+│   ├── ci.yml              # Tests + React build on every push
+│   ├── version-bump.yml    # Auto patch-bump on push to main
+│   └── release.yml         # Manual-trigger installer builds + publish
+├── INSTALL.md              # For artists
+├── FESTIVALS.md            # For festival organizers
+└── package.json
 ```
 
 ---
 
-## Festival Config Format
+## Cross-platform test suite
 
-Any festival can distribute a `.json` config. Artists load it via "Load festival config" in the header. All encoding parameters, resolutions, frame rates, and delivery folder naming update immediately.
+```bash
+npm test
+```
 
-Minimum required fields match `dfw_config.json`. The `video.x265_params` and `video.crf` fields are read directly into the FFmpeg command — no hardcoded values in the app logic.
+Runs 98 pure-function unit tests covering platform path resolution, FFmpeg arg generation, GPU encoder tables, loudness classification, version comparison, settings persistence, gap detection, output verification, and more. Tests run by passing platform strings as arguments — so the same machine validates Mac, Windows, and Linux behavior simultaneously.
+
+CI runs the test suite on every push (without downloading LFS binaries, since pure-function tests don't need them).
 
 ---
 
 ## License
 
-MIT — Copyright © 2027 Dome Fest West
+**MIT** — Copyright © 2027 Dome Festival Delivery Tool contributors.
 
-Questions? Contact [Ryan@domefestwest.com](mailto:Ryan@domefestwest.com) | [domefestwest.com](https://domefestwest.com)
+Use it freely, fork it freely, adapt it for your festival, commercial or otherwise. No royalty, no attribution required (though appreciated — a credit on your festival's submissions page helps other festivals discover the tool).
+
+---
+
+## Acknowledgments
+
+- **Originally built for [Dome Fest West](https://domefestwest.com)** by Ryan, with extensive iteration to harden the encoding pipeline against real-world fulldome submission failure modes.
+- **Bundled FFmpeg binaries** courtesy of [evermeet.cx](https://evermeet.cx/ffmpeg/) (macOS), [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) (Windows), and [johnvansickle.com](https://johnvansickle.com/ffmpeg/) (Linux).
+- **Electron + React + electron-builder** as the cross-platform foundation.
+
+---
+
+## Get involved
+
+- **Issues / bugs / feature requests** → [GitHub Issues](https://github.com/domefestwest/delivery-tool/issues)
+- **Adopting this for your festival?** → Open an issue or email **Ryan@domefestwest.com**. Happy to help validate your config or debug delivery issues.
+- **PRs welcome.** Tests must pass (`npm test`) and the React build must be clean (`npm run build`).

@@ -110,7 +110,7 @@ test('Mac packaged path', () => {
 test('Win packaged path includes .exe', () => {
   const p = platform.getBundledFFmpegPath({
     appRoot: '',
-    resourcesPath: 'C:\\Program Files\\Dome Fest West\\resources',
+    resourcesPath: 'C:\\Program Files\\Dome Festival Delivery Tool\\resources',
     isPackaged: true, platform: 'win32',
   });
   assert.ok(p.endsWith('ffmpeg.exe'), `Expected .exe ending, got: ${p}`);

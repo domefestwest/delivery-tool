@@ -1,8 +1,12 @@
-# For Festival Organizers — Adopt the Delivery Tool for Your Fest
+# For Festival Organizers — Configure the Tool for Your Fest
 
-The Dome Fest West Delivery Tool was built for **DFW** but designed from day one to support **any fulldome festival** with its own delivery requirements. If you run a planetarium fulldome festival and your submitting artists currently send you wildly inconsistent master files, this tool can give you a free, branded delivery pipeline.
+The **Dome Festival Delivery Tool** is an open-source tool designed for **any fulldome film festival**. Originally built for [Dome Fest West](https://domefestwest.com) and battle-tested on real submissions, it has been generalized so any festival can configure its own delivery requirements and brand the tool to its identity — no fork, no code changes, just a JSON config file.
 
-This document is for **festival directors, technical leads, and submission coordinators** considering adopting the tool. (Filmmakers should read [INSTALL.md](./INSTALL.md) instead.)
+If your submitting artists currently send you wildly inconsistent master files, this tool gives you a **free, branded, validated delivery pipeline** that artists install once and reuse for every submission.
+
+This document is for **festival directors, technical leads, and submission coordinators** configuring the tool for their festival. (Filmmakers should read [INSTALL.md](./INSTALL.md) instead. Developers should read [README.md](./README.md).)
+
+> 💡 **Starter configs are in [`examples/`](./examples/).** Copy any of them as a starting point — minimal, strict-8K-only, or DFW's production config.
 
 ---
 
@@ -109,7 +113,7 @@ Save as e.g. `superfest_config.json`. Every field shown below is required unless
 
 ## Recommended encoding spec (don't change unless you know why)
 
-These are the values we use for DFW and that have been validated on real planetarium playback systems:
+These are the validated baseline values — they're what Dome Fest West uses in production and have been proven on multiple planetarium playback systems (SkySkan and others). New festivals adopting the tool should start with these:
 
 - **Codec**: H.265 / HEVC via `libx265`
 - **Bit depth**: 10-bit (`yuv420p10le`)
@@ -166,7 +170,7 @@ The tool is **MIT licensed** — adopt freely, fork freely. No royalty, no attri
 
 If you do adopt it, an optional acknowledgment in your festival's About / Submissions page is appreciated:
 
-> Delivery encoding by the open-source [Dome Fest West Delivery Tool](https://github.com/domefestwest/delivery-tool)
+> Delivery encoding by the open-source [Dome Festival Delivery Tool](https://github.com/domefestwest/delivery-tool)
 
 ---
 

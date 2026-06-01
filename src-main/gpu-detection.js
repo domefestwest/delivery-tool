@@ -128,7 +128,7 @@ async function findSystemFFmpeg(platformStr = process.platform) {
  * on this machine. Returns boolean.
  */
 async function testGPUEncoder(ffmpegBin, candidate) {
-  const testOutput = path.join(os.tmpdir(), `dfw_gpu_test_${candidate.name}_${process.pid}.mp4`);
+  const testOutput = path.join(os.tmpdir(), `dfdt_gpu_test_${candidate.name}_${process.pid}.mp4`);
   const args = [
     '-y',
     '-f', 'lavfi', '-i', 'color=c=0x102030:s=128x128:r=30',

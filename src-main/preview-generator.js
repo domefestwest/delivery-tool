@@ -42,7 +42,7 @@ async function generateThumbnail({ ffmpegPath, sourceType, sourcePath, seekSecon
     .update(`${sourceType}:${sourcePath}:${stat.mtimeMs}`)
     .digest('hex')
     .slice(0, 16);
-  const thumbPath = path.join(os.tmpdir(), `dfw_preview_${cacheKey}.jpg`);
+  const thumbPath = path.join(os.tmpdir(), `dfdt_preview_${cacheKey}.jpg`);
 
   if (fs.existsSync(thumbPath)) {
     try {
@@ -113,7 +113,9 @@ async function generateThumbnail({ ffmpegPath, sourceType, sourcePath, seekSecon
 function cleanupOldThumbnails(olderThanMs = 24 * 60 * 60 * 1000) {
   try {
     const tmp = os.tmpdir();
-    const files = fs.readdirSync(tmp).filter(f => /^dfw_preview_[a-f0-9]+\.jpg$/.test(f));
+    // Match both the legacy 'dfw_preview_' prefix and the current 'dfdt_preview_'
+    // so old thumbnails get cleaned up too.
+    const files = fs.readdirSync(tmp).filter(f => /^(dfw|dfdt)_preview_[a-f0-9]+\.jpg$/.test(f));
     const cutoff = Date.now() - olderThanMs;
     let removed = 0;
     for (const f of files) {

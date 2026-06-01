@@ -23,9 +23,11 @@ export default function FestivalHeader({ config, depStatus, onLoadConfig }) {
     return () => unsub();
   }, []);
 
+  // No config loaded → show generic tool name. Once a festival config is loaded
+  // (DFW by default, or any custom one), show that festival's branding instead.
   const festivalName = config
     ? `${config.festival_name} ${config.version}`
-    : 'Dome Fest West 2027';
+    : 'Dome Festival Delivery Tool';
   const deadline = deadlineState(config?.submission_deadline);
   const deadlineColor = !deadline ? null :
     deadline.status === 'past' ? '#e05252' :

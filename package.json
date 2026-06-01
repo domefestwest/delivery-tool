@@ -1,7 +1,7 @@
 {
-  "name": "dome-delivery-tool",
+  "name": "dome-festival-delivery-tool",
   "version": "0.16.1",
-  "description": "Dome Fest West official film delivery and encoding tool",
+  "description": "Universal H.265 10-bit delivery encoder for fulldome film festivals — config-driven, cross-platform, open source",
   "main": "main.js",
   "homepage": "./",
   "scripts": {
@@ -16,9 +16,9 @@
     "test": "node test/cross-platform.test.js"
   },
   "build": {
-    "appId": "com.domefestwest.delivery-tool",
-    "productName": "Dome Fest West Delivery Tool",
-    "copyright": "Copyright © 2027 Dome Fest West",
+    "appId": "org.domefestival.delivery-tool",
+    "productName": "Dome Festival Delivery Tool",
+    "copyright": "Copyright © 2027 Dome Festival Delivery Tool contributors",
     "extends": null,
     "asar": true,
     "directories": {
@@ -47,27 +47,26 @@
       {
         "from": "ffmpeg/mac",
         "to": "ffmpeg/mac",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       },
       {
         "from": "ffmpeg/win",
         "to": "ffmpeg/win",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       },
       {
         "from": "ffmpeg/linux",
         "to": "ffmpeg/linux",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       },
       {
         "from": "dfw_config.json",
         "to": "dfw_config.json"
+      },
+      {
+        "from": "examples",
+        "to": "examples",
+        "filter": ["**/*"]
       }
     ],
     "mac": {
@@ -75,13 +74,10 @@
       "target": [
         {
           "target": "dmg",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
+          "arch": ["x64", "arm64"]
         }
       ],
-      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "artifactName": "Dome-Festival-Delivery-Tool-${version}-${arch}.${ext}",
       "darkModeSupport": true,
       "identity": null
     },
@@ -92,26 +88,22 @@
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
         }
       ],
       "requestedExecutionLevel": "asInvoker",
-      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "artifactName": "Dome-Festival-Delivery-Tool-Setup-${version}.${ext}",
       "verifyUpdateCodeSignature": false
     },
     "linux": {
       "target": [
         {
           "target": "AppImage",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
         }
       ],
       "category": "AudioVideo",
-      "artifactName": "${productName}-${version}.${ext}"
+      "artifactName": "Dome-Festival-Delivery-Tool-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -119,7 +111,7 @@
       "deleteAppDataOnUninstall": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "DFW Delivery Tool"
+      "shortcutName": "Dome Festival Delivery"
     }
   },
   "dependencies": {
@@ -134,14 +126,8 @@
     "wait-on": "^7.2.0"
   },
   "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version"
-    ]
+    "production": [">0.2%", "not dead", "not op_mini all"],
+    "development": ["last 1 chrome version"]
   },
   "license": "MIT",
   "repository": {
@@ -152,7 +138,8 @@
     "url": "https://github.com/domefestwest/delivery-tool/issues"
   },
   "author": {
-    "name": "Dome Fest West",
-    "email": "Ryan@domefestwest.com"
+    "name": "Dome Festival Delivery Tool contributors",
+    "email": "Ryan@domefestwest.com",
+    "url": "https://github.com/domefestwest/delivery-tool"
   }
 }

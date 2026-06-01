@@ -1,8 +1,9 @@
 /**
  * settings-store.js — persistent user preferences + recent encodes history.
  *
- * Stored in {userData}/dfw-settings.json. Atomic writes via temp-rename
- * pattern so a crash mid-write can't corrupt the file.
+ * Stored in {userData}/settings.json (was 'dfw-settings.json' before v0.16 —
+ * see migrateLegacySettingsIfNeeded). Atomic writes via temp-rename pattern
+ * so a crash mid-write can't corrupt the file.
  *
  * Holds:
  *   - artistName / studio defaults
@@ -32,14 +33,36 @@ const DEFAULTS = {
 
 const RECENT_MAX = 10;
 
+// Settings file historically lived at 'dfw-settings.json'. After the v0.16
+// rebrand we use 'settings.json'. On first launch we transparently migrate any
+// pre-existing dfw-settings.json so users don't lose their saved preferences.
 function getSettingsPath(userDataDir) {
+  return path.join(userDataDir, 'settings.json');
+}
+
+function getLegacySettingsPath(userDataDir) {
   return path.join(userDataDir, 'dfw-settings.json');
+}
+
+function migrateLegacySettingsIfNeeded(userDataDir) {
+  const newPath = getSettingsPath(userDataDir);
+  const legacyPath = getLegacySettingsPath(userDataDir);
+  if (!fs.existsSync(newPath) && fs.existsSync(legacyPath)) {
+    try {
+      fs.copyFileSync(legacyPath, newPath);
+      console.log('[Settings] Migrated legacy dfw-settings.json → settings.json');
+    } catch (err) {
+      console.warn('[Settings] Legacy migration failed:', err.message);
+    }
+  }
 }
 
 /**
  * Read settings, merging with defaults for any missing keys.
+ * Auto-migrates a pre-v0.16 dfw-settings.json on first call if present.
  */
 function readSettings(userDataDir) {
+  migrateLegacySettingsIfNeeded(userDataDir);
   const file = getSettingsPath(userDataDir);
   try {
     if (!fs.existsSync(file)) return { ...DEFAULTS };

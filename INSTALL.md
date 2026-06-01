@@ -1,7 +1,8 @@
 # Installation Guide — for Artists
 
-This is the install guide for filmmakers submitting to **Dome Fest West**.
-If you're a developer working on the tool itself, see the main [README.md](./README.md) instead.
+This is the install guide for filmmakers submitting to **any fulldome festival** that uses the **Dome Festival Delivery Tool** (originally built for Dome Fest West, now adopted by multiple festivals — your festival should have given you their config file separately).
+
+If you're a developer working on the tool itself, see the main [README.md](./README.md) instead. If you're a festival organizer evaluating the tool for your festival, see [FESTIVALS.md](./FESTIVALS.md).
 
 ---
 
@@ -11,10 +12,10 @@ Go to the **[Releases page](https://github.com/domefestwest/delivery-tool/releas
 
 | Your OS | Download |
 |---------|----------|
-| **macOS** (Apple Silicon — M1/M2/M3/M4) | `Dome Fest West Delivery Tool-x.x.x-arm64.dmg` |
-| **macOS** (Intel) | `Dome Fest West Delivery Tool-x.x.x-x64.dmg` |
-| **Windows 10/11** | `Dome Fest West Delivery Tool-Setup-x.x.x.exe` |
-| **Linux** (x86_64) | `Dome Fest West Delivery Tool-x.x.x.AppImage` |
+| **macOS** (Apple Silicon — M1/M2/M3/M4) | `Dome Festival Delivery Tool-x.x.x-arm64.dmg` |
+| **macOS** (Intel) | `Dome Festival Delivery Tool-x.x.x-x64.dmg` |
+| **Windows 10/11** | `Dome Festival Delivery Tool-Setup-x.x.x.exe` |
+| **Linux** (x86_64) | `Dome Festival Delivery Tool-x.x.x.AppImage` |
 
 Not sure which Mac you have? Apple menu → **About This Mac**. If "Chip" starts with "Apple", you want the **arm64** download. If "Processor" says "Intel", you want **x64**.
 
@@ -33,7 +34,7 @@ When you double-click the `.dmg` you'll be able to drag the app into your Applic
 **Recommended bypass:**
 
 1. Open **Applications** in Finder
-2. **Right-click** (or Ctrl-click) the **Dome Fest West Delivery Tool** app
+2. **Right-click** (or Ctrl-click) the **Dome Festival Delivery Tool** app
 3. Choose **Open** from the menu
 4. macOS shows a dialog: *"macOS cannot verify the developer..."* — click **Open** anyway
 5. The app launches. You won't see this warning again.
@@ -43,7 +44,7 @@ When you double-click the `.dmg` you'll be able to drag the app into your Applic
 1. Try to open the app normally (it'll get blocked)
 2. Open **System Settings** → **Privacy & Security**
 3. Scroll down to **Security**
-4. You'll see: *"Dome Fest West Delivery Tool was blocked..."* — click **Open Anyway**
+4. You'll see: *"Dome Festival Delivery Tool was blocked..."* — click **Open Anyway**
 5. Authenticate with your password / Touch ID
 6. The app launches.
 
@@ -58,7 +59,7 @@ Run the `.exe` installer. Windows SmartScreen may block it with a blue dialog.
 5. Follow the prompts (default settings are fine)
 
 After install:
-- **Start Menu shortcut**: "DFW Delivery Tool"
+- **Start Menu shortcut**: "Dome Festival Delivery"
 - **Desktop shortcut** (if you enabled it during install)
 
 ### Linux
@@ -68,11 +69,11 @@ The AppImage is a single executable file — no installer.
 1. Open a terminal in the folder where you downloaded the `.AppImage`
 2. Make it executable:
    ```bash
-   chmod +x "Dome Fest West Delivery Tool-x.x.x.AppImage"
+   chmod +x "Dome Festival Delivery Tool-x.x.x.AppImage"
    ```
 3. Double-click it in your file manager, OR run it from the terminal:
    ```bash
-   ./Dome\ Fest\ West\ Delivery\ Tool-x.x.x.AppImage
+   ./Dome-Festival-Delivery-Tool-x.x.x.AppImage
    ```
 
 Some distros (Ubuntu 22.04+, Fedora 38+) require **FUSE** for AppImage to work:
@@ -98,19 +99,19 @@ On Linux: replace the `.AppImage` file with the new version.
 ## Uninstalling
 
 ### macOS
-Drag **Dome Fest West Delivery Tool.app** from **Applications** to the Trash.
+Drag **Dome Festival Delivery Tool.app** from **Applications** to the Trash.
 
-Settings stored in `~/Library/Application Support/Dome Fest West Delivery Tool/` — delete that folder if you want a fully clean removal.
+Settings stored in `~/Library/Application Support/Dome Festival Delivery Tool/` — delete that folder if you want a fully clean removal.
 
 ### Windows
-**Settings → Apps → Installed apps** → find **Dome Fest West Delivery Tool** → click **⋯** → **Uninstall**.
+**Settings → Apps → Installed apps** → find **Dome Festival Delivery Tool** → click **⋯** → **Uninstall**.
 
-Settings stored in `%APPDATA%\Dome Fest West Delivery Tool\` — by default the uninstaller preserves these for reinstall. Delete that folder for a fully clean removal.
+Settings stored in `%APPDATA%\Dome Festival Delivery Tool\` — by default the uninstaller preserves these for reinstall. Delete that folder for a fully clean removal.
 
 ### Linux
 Just delete the `.AppImage` file.
 
-Settings stored in `~/.config/Dome Fest West Delivery Tool/` — delete that folder for a fully clean removal.
+Settings stored in `~/.config/Dome Festival Delivery Tool/` — delete that folder for a fully clean removal.
 
 ---
 

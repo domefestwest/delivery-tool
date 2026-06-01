@@ -94,7 +94,7 @@ function createWindow() {
     height: 820,
     minWidth: 860,
     minHeight: 640,
-    title: 'Dome Fest West Delivery Tool',
+    title: 'Dome Festival Delivery Tool',
     backgroundColor: '#1a1a1a',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -478,8 +478,11 @@ ipcMain.handle('project:save', async (_, state) => {
   const safeName = filmTitle.replace(/[^a-zA-Z0-9_-]/g, '_');
   const save = await dialog.showSaveDialog(mainWindow, {
     title: 'Save Project',
-    defaultPath: `${safeName}.dfwproj`,
-    filters: [{ name: 'DFW Project', extensions: ['dfwproj'] }],
+    defaultPath: `${safeName}.domeproj`,
+    filters: [
+      { name: 'Dome Festival Project', extensions: ['domeproj'] },
+      { name: 'Legacy DFW Project', extensions: ['dfwproj'] },
+    ],
   });
   if (save.canceled || !save.filePath) return { canceled: true };
   return saveProject(save.filePath, state, getAppVersion());
@@ -488,7 +491,10 @@ ipcMain.handle('project:save', async (_, state) => {
 ipcMain.handle('project:open', async () => {
   const open = await dialog.showOpenDialog(mainWindow, {
     title: 'Open Project',
-    filters: [{ name: 'DFW Project', extensions: ['dfwproj'] }],
+    filters: [
+      // Accept both new and legacy extensions
+      { name: 'Dome Festival Projects', extensions: ['domeproj', 'dfwproj'] },
+    ],
     properties: ['openFile'],
   });
   if (open.canceled || !open.filePaths.length) return { canceled: true };
@@ -500,7 +506,7 @@ ipcMain.handle('project:open', async () => {
 // and full FFmpeg stderr — so artists can email Ryan a meaningful bug report.
 
 ipcMain.handle('debug:save-log', async (_, opts) => {
-  const defaultName = `dfw-debug-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.txt`;
+  const defaultName = `dfdt-debug-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.txt`;
   const save = await dialog.showSaveDialog(mainWindow, {
     title: 'Save Debug Log',
     defaultPath: defaultName,
@@ -510,7 +516,7 @@ ipcMain.handle('debug:save-log', async (_, opts) => {
 
   const lines = [];
   const sep = '─'.repeat(72);
-  lines.push('Dome Fest West Delivery Tool — Debug Log');
+  lines.push('Dome Festival Delivery Tool — Debug Log');
   lines.push(sep);
   lines.push(`Generated:        ${new Date().toISOString()}`);
   lines.push(`Tool version:     v${getAppVersion()}`);

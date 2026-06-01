@@ -29,10 +29,10 @@ export default function OnboardingScreen({ depStatus, onRecheck }) {
       <div style={{ textAlign: 'center', marginBottom: 32 }}>
         <div style={{ fontSize: 40, marginBottom: 8 }}>🎬</div>
         <div style={{ color: '#ED8B1E', fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 4 }}>
-          Dome Fest West
+          Fulldome Festival Delivery
         </div>
         <div style={{ color: '#e8e8e8', fontSize: 22, fontWeight: 700 }}>
-          Delivery Tool
+          Dome Festival Delivery Tool
         </div>
       </div>
 
@@ -66,7 +66,7 @@ export default function OnboardingScreen({ depStatus, onRecheck }) {
           </div>
         ) : (
           <p style={{ color: '#999', fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
-            The Dome Fest West Delivery Tool uses FFmpeg to encode your film.
+            The Dome Festival Delivery Tool uses FFmpeg to encode your film.
             FFmpeg was not detected on this system. Please follow the instructions below for your operating system.
           </p>
         )}
