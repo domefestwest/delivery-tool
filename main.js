@@ -20,7 +20,7 @@ const { detectGaps, formatGapReport } = require('./src-main/gap-detector');
 const { estimateOutputSize, recommendedFreeBytes } = require('./src-main/output-estimate');
 const { checkOutputDiskSpace } = require('./src-main/disk-space');
 const { probeAndVerify }      = require('./src-main/output-verification');
-const { analyzeLoudness, classifyLoudness } = require('./src-main/loudness');
+const { analyzeLoudness, classifyLoudness, analyzeMix } = require('./src-main/loudness');
 const { zipDeliveryFolder }   = require('./src-main/zip-package');
 const { generateThumbnail, cleanupOldThumbnails } = require('./src-main/preview-generator');
 const settingsStore           = require('./src-main/settings-store');
@@ -434,6 +434,76 @@ ipcMain.handle('settings:recent-add', (_, entry) => {
   return settingsStore.addRecentEncode(app.getPath('userData'), entry);
 });
 
+// ─── IPC: Save debug log ──────────────────────────────────────────────────────
+// Writes a portable text file with system info, dep-check result, encode params,
+// and full FFmpeg stderr — so artists can email Ryan a meaningful bug report.
+
+ipcMain.handle('debug:save-log', async (_, opts) => {
+  const defaultName = `dfw-debug-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.txt`;
+  const save = await dialog.showSaveDialog(mainWindow, {
+    title: 'Save Debug Log',
+    defaultPath: defaultName,
+    filters: [{ name: 'Text', extensions: ['txt'] }],
+  });
+  if (save.canceled || !save.filePath) return { canceled: true };
+
+  const lines = [];
+  const sep = '─'.repeat(72);
+  lines.push('Dome Fest West Delivery Tool — Debug Log');
+  lines.push(sep);
+  lines.push(`Generated:        ${new Date().toISOString()}`);
+  lines.push(`Tool version:     v${getAppVersion()}`);
+  lines.push(`Platform:         ${process.platform} ${process.arch}`);
+  lines.push(`OS release:       ${require('os').release()}`);
+  lines.push(`Node version:     ${process.versions.node}`);
+  lines.push(`Electron version: ${process.versions.electron}`);
+  lines.push(`Chrome version:   ${process.versions.chrome}`);
+  lines.push('');
+  lines.push(sep);
+  lines.push('DEPENDENCY CHECK RESULT');
+  lines.push(sep);
+  lines.push(JSON.stringify(depCheckResult, null, 2));
+  lines.push('');
+  lines.push(sep);
+  lines.push('ACTIVE CONFIG');
+  lines.push(sep);
+  lines.push(JSON.stringify(activeConfig, null, 2));
+  lines.push('');
+  lines.push(sep);
+  lines.push('LAST ENCODE / SESSION CONTEXT');
+  lines.push(sep);
+  if (opts?.contextSummary) {
+    lines.push(JSON.stringify(opts.contextSummary, null, 2));
+  } else {
+    lines.push('(no context provided)');
+  }
+  lines.push('');
+  if (opts?.ffmpegLog) {
+    lines.push(sep);
+    lines.push('FFMPEG STDERR (LAST 20K CHARS)');
+    lines.push(sep);
+    lines.push(String(opts.ffmpegLog).slice(-20000));
+    lines.push('');
+  }
+  if (opts?.errorMessage) {
+    lines.push(sep);
+    lines.push('ERROR MESSAGE');
+    lines.push(sep);
+    lines.push(String(opts.errorMessage));
+    lines.push('');
+  }
+  lines.push(sep);
+  lines.push('Email to: Ryan@domefestwest.com');
+  lines.push(sep);
+
+  try {
+    fs.writeFileSync(save.filePath, lines.join('\n'), 'utf8');
+    return { ok: true, path: save.filePath };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
 // ─── IPC: Native completion notification ──────────────────────────────────────
 
 ipcMain.handle('notify:encode-complete', (_, opts) => {
@@ -654,18 +724,24 @@ ipcMain.handle('encode:start', async (_, encodeParams) => {
         });
       } catch (_) {}
 
-      // AUDIO LOUDNESS ANALYSIS (on first stem, or muxed track)
+      // AUDIO LOUDNESS ANALYSIS — proper full-mix analysis.
+      // Priority: muxed video → interleaved source → amerge of stems.
+      // (The previous version analyzed only stems[0], which gave meaningless
+      // numbers for multi-stem audio — e.g. measuring just LFE.)
       let loudness = null;
       if (audioResult.stems && audioResult.stems.length > 0) {
         try {
-          const targetLufs = config.audio_target_lufs ?? -23.0;
-          // Analyze first stem (typically L) — sample, not full mix
-          const measurement = await analyzeLoudness(activeFFmpegPath, audioResult.stems[0].path);
-          loudness = {
-            measurement,
-            classification: classifyLoudness(measurement, targetLufs),
-          };
-        } catch (_) {}
+          const mixResult = await analyzeMix({
+            ffmpegPath: activeFFmpegPath,
+            muxedVideoPath: audioResult.muxReplaced ? outputVideoPath : null,
+            interleavedSourcePath: audioMode === 'interleaved' ? audioInterleaved : null,
+            stemPaths: audioResult.stems.map(s => s.path),
+            targetLufs: config.audio_target_lufs ?? -23.0,
+          });
+          loudness = mixResult;
+        } catch (err) {
+          console.warn('[loudness] analysis threw:', err.message);
+        }
       }
 
       let x265ParamsForReport = null;

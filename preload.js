@@ -48,6 +48,9 @@ contextBridge.exposeInMainWorld('api', {
   // Notifications
   notify:          (opts) => ipcRenderer.invoke('notify:encode-complete', opts),
 
+  // Debug log export
+  saveDebugLog:    (opts) => ipcRenderer.invoke('debug:save-log', opts),
+
   // Encode
   startEncode:    (params) => ipcRenderer.invoke('encode:start', params),
   cancelEncode:   ()       => ipcRenderer.invoke('encode:cancel'),

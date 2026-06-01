@@ -203,6 +203,44 @@ export default function EncodeAction({
     setResult({ ...result, zip: z });
   };
 
+  // Build a context summary for the debug log
+  const buildContextSummary = () => ({
+    filmTitle, artistName, sourceType,
+    sourcePath: sourceType === 'png' ? pngFolder : videoPath,
+    pngData: pngData ? {
+      pattern: pngData.pattern, frameCount: pngData.frameCount,
+      bitDepth: pngData.bitDepth, hasGaps: !!pngData.gaps?.hasGaps,
+    } : null,
+    videoData: videoData ? {
+      codec: videoData.codec, width: videoData.width, height: videoData.height,
+      fps: videoData.fps, duration: videoData.duration, bitDepth: videoData.bitDepth,
+    } : null,
+    resolution, frameRate: effectiveFps, outputDir,
+    audioMode, audioStemCount: audioStems?.length || 0, muxAudio,
+    useGPU, willUseGPU,
+    frameRateWarning,
+    result: result ? {
+      deliveryFolder: result.deliveryFolder,
+      videoSizeBytes: result.videoSizeBytes,
+      videoMd5: result.videoMd5,
+      verification: result.verification,
+      loudness: result.loudness?.classification,
+    } : null,
+  });
+
+  const handleSaveLog = async () => {
+    const r = await window.api.saveDebugLog({
+      contextSummary: buildContextSummary(),
+      ffmpegLog: log,
+      errorMessage: error,
+    });
+    if (r.ok) {
+      setLog(prev => prev + `\n[Debug log saved to ${r.path}]\n`);
+    } else if (r.error) {
+      setLog(prev => prev + `\n[Save log failed: ${r.error}]\n`);
+    }
+  };
+
   const progressPct = progress?.frame && progress?.totalFrames
     ? Math.min(99, Math.round((progress.frame / progress.totalFrames) * 100)) : null;
 
@@ -352,8 +390,15 @@ export default function EncodeAction({
       {error && !encoding && (
         <div className="alert alert-error" style={{ marginTop: 12 }}>
           ✕ {error}
-          <button className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 12px', marginLeft: 12 }}
-            onClick={() => { setError(null); setLog(''); }}>Try again</button>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+            <button className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 12px' }}
+              onClick={() => { setError(null); setLog(''); }}>Try again</button>
+            <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 12px' }}
+              onClick={handleSaveLog}
+              title="Save a debug log to email Ryan@domefestwest.com">
+              💾 Save debug log…
+            </button>
+          </div>
           {log && (
             <pre style={{ marginTop: 10, fontSize: 11, fontFamily: 'monospace',
                           color: '#f08080', maxHeight: 200, overflow: 'auto',
@@ -427,6 +472,10 @@ export default function EncodeAction({
             <button className="btn btn-secondary"
               onClick={() => { setResult(null); setLog(''); setProgress(null); setActiveEncoder(null); }}>
               New Encode
+            </button>
+            <button className="btn btn-ghost" onClick={handleSaveLog}
+              title="Save a portable debug log (for support)">
+              💾 Save log
             </button>
           </div>
 
