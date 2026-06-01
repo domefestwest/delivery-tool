@@ -83,6 +83,31 @@ export default function App() {
     });
   }, [artistName, outputDir, useGPU, autoZip, notifyOnComplete, autoOpenFolder, preventSleep]);
 
+  // ─── Keyboard shortcuts ────────────────────────────────────────────────────
+  // Cmd/Ctrl+S → Save project
+  // Cmd/Ctrl+O → Open project
+  // (Cmd/Ctrl+E / +T are handled inside EncodeAction where it owns the encode state)
+  useEffect(() => {
+    const onKey = (e) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      // Don't override Save/Open if user is in an input
+      const tag = (e.target.tagName || '').toLowerCase();
+      const inEditable = tag === 'input' || tag === 'textarea' || e.target.isContentEditable;
+      if (inEditable) return;
+
+      if (e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        handleSaveProject();
+      } else if (e.key.toLowerCase() === 'o') {
+        e.preventDefault();
+        handleOpenProject();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [handleSaveProject, handleOpenProject]);
+
   const handleRecheck = useCallback(async () => {
     setDepStatus(null);
     const dep = await window.api.recheckDependencies();

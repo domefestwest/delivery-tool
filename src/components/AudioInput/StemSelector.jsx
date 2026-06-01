@@ -30,23 +30,41 @@ function detectChannel(filename) {
 
 export default function StemSelector({ stems, onStemsChange }) {
   const [loading, setLoading] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+
+  const addFiles = (filePaths) => {
+    const newStems = filePaths
+      .filter(p => /\.wav$/i.test(p))
+      .map(f => ({
+        filePath: f,
+        filename: f.split('/').pop().split('\\').pop(),
+        channel: detectChannel(f.split('/').pop().split('\\').pop()) || ''
+      }));
+    if (!newStems.length) return;
+    const existing = stems.filter(s => !newStems.find(n => n.filePath === s.filePath));
+    onStemsChange([...existing, ...newStems]);
+  };
 
   const handleAddFiles = async () => {
     const files = await window.api.openFiles({
       title: 'Select Audio Stem Files',
       filters: [{ name: 'WAV Audio', extensions: ['wav'] }]
     });
-    if (!files) return;
+    if (files) addFiles(files);
+  };
 
-    const newStems = files.map(f => ({
-      filePath: f,
-      filename: f.split('/').pop().split('\\').pop(),
-      channel: detectChannel(f.split('/').pop().split('\\').pop()) || ''
-    }));
-
-    // Merge — avoid duplicates by path
-    const existing = stems.filter(s => !newStems.find(n => n.filePath === s.filePath));
-    onStemsChange([...existing, ...newStems]);
+  // Drag-and-drop handlers
+  const handleDragEnter = (e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); };
+  const handleDragLeave = (e) => { e.preventDefault(); e.stopPropagation(); setDragActive(false); };
+  const handleDragOver  = (e) => { e.preventDefault(); e.stopPropagation(); };
+  const handleDrop = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    setDragActive(false);
+    const files = Array.from(e.dataTransfer.files || []);
+    const paths = files
+      .map(f => window.api.getPathForFile(f))
+      .filter(Boolean);
+    if (paths.length) addFiles(paths);
   };
 
   const handleRemove = (index) => {
@@ -64,13 +82,39 @@ export default function StemSelector({ stems, onStemsChange }) {
   const duplicates = CHANNELS.filter(c => assignedChannels.filter(a => a === c).length > 1);
 
   return (
-    <div>
+    <div
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      style={{
+        position: 'relative',
+        border: dragActive ? '2px dashed var(--orange)' : '2px dashed transparent',
+        borderRadius: 6,
+        padding: dragActive ? 10 : 0,
+        margin: dragActive ? -10 : 0,
+        background: dragActive ? 'rgba(237,139,30,0.05)' : 'transparent',
+        transition: 'all 0.15s',
+      }}
+    >
+      {dragActive && (
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(26,26,26,0.8)', borderRadius: 6,
+          color: 'var(--orange)', fontSize: 13, fontWeight: 700,
+          pointerEvents: 'none', zIndex: 10,
+        }}>
+          🎵 Drop WAV stems
+        </div>
+      )}
+
       <div style={{ marginBottom: 10 }}>
         <button className="btn btn-secondary" onClick={handleAddFiles}>
           + Add Stem Files
         </button>
-        <span style={{ color: '#666', fontSize: 12, marginLeft: 12 }}>
-          Select up to 6 WAV files (L, R, C, LFE, Ls, Rs)
+        <span style={{ color: '#666', fontSize: 11, marginLeft: 12 }}>
+          Up to 6 WAV files · or drag them here
         </span>
       </div>
 

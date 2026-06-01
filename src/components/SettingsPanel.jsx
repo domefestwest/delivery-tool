@@ -108,15 +108,17 @@ export default function SettingsPanel({
                   <button
                     className="popover-item"
                     onClick={() => { onOpenProject?.(); setShowRecent(false); }}
+                    title="⌘O / Ctrl+O"
                   >
-                    <div className="popover-item-title">📂 Open project file…</div>
+                    <div className="popover-item-title">📂 Open project file… <span style={{ color: '#555', fontSize: 11 }}>⌘O</span></div>
                     <div className="popover-item-sub">.dfwproj from a previous save</div>
                   </button>
                   <button
                     className="popover-item"
                     onClick={() => { onSaveProject?.(); setShowRecent(false); }}
+                    title="⌘S / Ctrl+S"
                   >
-                    <div className="popover-item-title">💾 Save current as project…</div>
+                    <div className="popover-item-title">💾 Save current as project… <span style={{ color: '#555', fontSize: 11 }}>⌘S</span></div>
                     <div className="popover-item-sub">Pickup-where-you-left-off later</div>
                   </button>
                   {recentEncodes?.length > 0 && (

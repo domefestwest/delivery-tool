@@ -110,6 +110,37 @@ export default function EncodeAction({
     return () => { u1(); u2(); u3(); };
   }, []);
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const onKey = (e) => {
+      const mod = e.metaKey || e.ctrlKey;
+      const tag = (e.target.tagName || '').toLowerCase();
+      const inEditable = tag === 'input' || tag === 'textarea' || e.target.isContentEditable;
+
+      // Escape = cancel encode (works anywhere)
+      if (e.key === 'Escape' && encoding) {
+        e.preventDefault();
+        handleCancel();
+        return;
+      }
+
+      if (!mod || inEditable) return;
+      const k = e.key.toLowerCase();
+
+      if (k === 'e') {
+        // Cmd+E = encode
+        e.preventDefault();
+        if (encodeReady && !encoding && !testing) handleEncode();
+      } else if (k === 't') {
+        // Cmd+T = test encode
+        e.preventDefault();
+        if (encodeReady && !encoding && !testing) handleTestEncode();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [encodeReady, encoding, testing]);  // handleEncode/handleTestEncode/handleCancel are stable references in this component
+
   // Pre-flight disk check whenever inputs change
   useEffect(() => {
     if (!encodeReady || !outputDir || !resolution || !effectiveFps || !sourceDuration) {
@@ -340,7 +371,7 @@ export default function EncodeAction({
                   className="text-btn"
                   onClick={handleTestEncode}
                   disabled={testing}
-                  title="Encode 5 seconds, open in default player"
+                  title="⌘T / Ctrl+T — Encode 5 seconds, open in default player"
                 >
                   {testing ? '⏳ Testing…' : '🎬 Test 5s'}
                 </button>
@@ -370,13 +401,14 @@ export default function EncodeAction({
             className="btn btn-primary btn-lg btn-encode"
             onClick={handleEncode}
             disabled={!encodeReady || encoding || testing || diskCheck?.check?.status === 'insufficient'}
+            title="⌘E / Ctrl+E"
           >
             {encoding ? '⏳ Encoding…'
               : isBatch ? `▶ Encode ${selectedResolutions.length} resolutions`
               : '▶ Encode and Package'}
           </button>
           {encoding && (
-            <button className="btn btn-danger" onClick={handleCancel}>✕ Cancel</button>
+            <button className="btn btn-danger" onClick={handleCancel} title="Esc">✕ Cancel</button>
           )}
         </div>
       )}

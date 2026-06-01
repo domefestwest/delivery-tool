@@ -32,10 +32,10 @@ function detectGaps(files) {
     };
   }
 
-  // Extract frame numbers
+  // Extract frame numbers (works for both PNG and EXR sequences)
   const numbers = [];
   for (const f of files) {
-    const m = f.match(/^.*?(\d{2,10})\.png$/i);
+    const m = f.match(/^.*?(\d{2,10})\.(png|exr)$/i);
     if (m) numbers.push(parseInt(m[1], 10));
   }
   if (numbers.length === 0) {

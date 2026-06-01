@@ -192,17 +192,17 @@ export default function SourcePreview({
               {dragActive ? '⬇️' : '🎬'}
             </div>
             <div style={{ fontSize: 14, color: '#aaa', marginBottom: 4 }}>
-              {dragActive ? 'Drop to load' : 'Drop a video or PNG folder here'}
+              {dragActive ? 'Drop to load' : 'Drop a video or image-sequence folder here'}
             </div>
             <div style={{ fontSize: 11, color: '#555', marginBottom: 18 }}>
-              .mp4 · .mov · folders of .png frames
+              .mp4 · .mov · folders of .png or .exr frames
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn btn-secondary" onClick={handleBrowseVideo}>
                 Browse video…
               </button>
               <button className="btn btn-secondary" onClick={handleBrowsePNGs}>
-                Browse PNGs…
+                Browse sequence…
               </button>
             </div>
             {onOpenProject && (
@@ -262,7 +262,11 @@ export default function SourcePreview({
         <div className="source-info">
           <div className="chip-row">
             <span className={`chip chip-${sourceType === 'video' ? 'blue' : 'green'}`}>
-              {sourceType === 'video' ? '🎬 Video' : '🖼 PNG sequence'}
+              {sourceType === 'video'
+                ? '🎬 Video'
+                : pngData?.sourceExt === 'exr'
+                  ? '🖼 EXR sequence'
+                  : '🖼 PNG sequence'}
             </span>
             {sourceType === 'png' && pngData?.frameCount && (
               <span className="chip">{pngData.frameCount.toLocaleString()} frames</span>

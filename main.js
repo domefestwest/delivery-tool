@@ -214,24 +214,37 @@ ipcMain.handle('dialog:save-folder', async (_, opts) => {
 ipcMain.handle('shell:open-path', async (_, p) => shell.openPath(p));
 ipcMain.handle('shell:show-in-folder', async (_, p) => shell.showItemInFolder(p));
 
-// ─── IPC: PNG sequence scanning (with gap detection) ──────────────────────────
+// ─── IPC: Image sequence scanning (PNG and EXR) ───────────────────────────────
 
 ipcMain.handle('scan:png-sequence', async (_, folderPath) => {
   try {
-    const files = fs.readdirSync(folderPath).filter(f => /\.png$/i.test(f)).sort();
-    if (!files.length) return { error: 'No PNG files found in this folder.' };
+    // Look for PNG and EXR sequences. EXR is common in VFX-heavy workflows
+    // (Houdini, Nuke, Maya) and preserves linear HDR data.
+    const allFiles = fs.readdirSync(folderPath);
+    const imageFiles = allFiles.filter(f => /\.(png|exr)$/i.test(f)).sort();
+    if (!imageFiles.length) {
+      return { error: 'No PNG or EXR image files found in this folder.' };
+    }
+
+    // Detect dominant extension (mixed folders are unusual; we pick whichever has more)
+    const pngCount = imageFiles.filter(f => /\.png$/i.test(f)).length;
+    const exrCount = imageFiles.filter(f => /\.exr$/i.test(f)).length;
+    const ext = pngCount >= exrCount ? 'png' : 'exr';
+    const extRegex = ext === 'png' ? /^(.*?)(\d{2,10})(\.png)$/i : /^(.*?)(\d{2,10})(\.exr)$/i;
+    const files = imageFiles.filter(f =>
+      ext === 'png' ? /\.png$/i.test(f) : /\.exr$/i.test(f));
 
     const patterns = {};
     for (const file of files) {
-      const m = file.match(/^(.*?)(\d{2,10})(\.png)$/i);
+      const m = file.match(extRegex);
       if (m) {
-        const key = `${m[1]}${'#'.repeat(m[2].length)}.png`;
+        const key = `${m[1]}${'#'.repeat(m[2].length)}.${ext}`;
         (patterns[key] = patterns[key] || []).push(file);
       }
     }
     const best = Object.entries(patterns).sort((a, b) => b[1].length - a[1].length)[0];
     if (!best) {
-      return { error: 'Could not detect a numbered PNG sequence. Try entering the pattern manually.' };
+      return { error: `Could not detect a numbered ${ext.toUpperCase()} sequence. Try entering the pattern manually.` };
     }
     const [patternStr, matchedFiles] = best;
 
@@ -249,18 +262,27 @@ ipcMain.handle('scan:png-sequence', async (_, folderPath) => {
         if (stream) {
           const bprs = parseInt(stream.bits_per_raw_sample, 10);
           const pf = stream.pix_fmt || '';
-          if (bprs === 16 || /16|48|64/.test(pf)) bitDepth = 16;
-          else if (bprs === 8 || /^(rgb24|rgba|gray|pal8)$/.test(pf)) bitDepth = 8;
-          else if (pf) bitDepth = 8;
+          // EXR is typically half-float (16-bit) or full-float (32-bit).
+          // gbrpf32le, gbrp16le, gbrap16le etc. all indicate high bit depth.
+          if (ext === 'exr') {
+            // Almost all EXRs are >= 16-bit float; treat as 16-bit equivalent
+            bitDepth = 16;
+            if (/f32|f64|float/.test(pf)) bitDepth = 16; // float still maps to 16-bit for our tagging logic
+          } else if (bprs === 16 || /16|48|64/.test(pf)) {
+            bitDepth = 16;
+          } else if (bprs === 8 || /^(rgb24|rgba|gray|pal8)$/.test(pf)) {
+            bitDepth = 8;
+          } else if (pf) {
+            bitDepth = 8;
+          }
         }
       } catch (_) {}
     }
 
-    // Build ffmpeg pattern
-    const m = matchedFiles[0].match(/^(.*?)(\d{2,10})(\.png)$/i);
-    const ffmpegPattern = path.join(folderPath, `${m[1]}%0${m[2].length}d.png`);
+    // Build ffmpeg pattern (extension preserved)
+    const m = matchedFiles[0].match(extRegex);
+    const ffmpegPattern = path.join(folderPath, `${m[1]}%0${m[2].length}d.${ext}`);
 
-    // Gap detection (NEW)
     const gaps = detectGaps(matchedFiles);
 
     return {
@@ -268,6 +290,7 @@ ipcMain.handle('scan:png-sequence', async (_, folderPath) => {
       ffmpegPattern,
       frameCount: matchedFiles.length,
       bitDepth,
+      sourceExt: ext,  // 'png' or 'exr' — for UI labels
       firstFrame: path.join(folderPath, matchedFiles[0]),
       lastFrame: path.join(folderPath, matchedFiles[matchedFiles.length - 1]),
       gaps,
@@ -351,14 +374,14 @@ ipcMain.handle('source:detect', async (_, p) => {
 
   const stat = fs.statSync(p);
 
-  // Directory → check for PNGs inside
+  // Directory → check for image sequences inside (PNG or EXR)
   if (stat.isDirectory()) {
     try {
-      const files = fs.readdirSync(p).filter(f => /\.png$/i.test(f));
+      const files = fs.readdirSync(p).filter(f => /\.(png|exr)$/i.test(f));
       if (files.length > 0) {
         return { kind: 'png-folder', folderPath: p, pngCount: files.length };
       }
-      return { kind: 'unknown', error: 'Folder has no PNG files' };
+      return { kind: 'unknown', error: 'Folder has no PNG or EXR files' };
     } catch (err) {
       return { kind: 'unknown', error: err.message };
     }
@@ -368,8 +391,8 @@ ipcMain.handle('source:detect', async (_, p) => {
   if (/\.(mp4|mov|m4v)$/i.test(p)) {
     return { kind: 'video', filePath: p };
   }
-  if (/\.png$/i.test(p)) {
-    // Single PNG → use its parent folder for sequence scan
+  if (/\.(png|exr)$/i.test(p)) {
+    // Single image → use its parent folder for sequence scan
     return { kind: 'png-folder', folderPath: path.dirname(p), pngCount: 1 };
   }
   return { kind: 'unknown', error: 'Unrecognized file type' };
