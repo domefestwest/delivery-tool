@@ -83,31 +83,6 @@ export default function App() {
     });
   }, [artistName, outputDir, useGPU, autoZip, notifyOnComplete, autoOpenFolder, preventSleep]);
 
-  // ─── Keyboard shortcuts ────────────────────────────────────────────────────
-  // Cmd/Ctrl+S → Save project
-  // Cmd/Ctrl+O → Open project
-  // (Cmd/Ctrl+E / +T are handled inside EncodeAction where it owns the encode state)
-  useEffect(() => {
-    const onKey = (e) => {
-      const mod = e.metaKey || e.ctrlKey;
-      if (!mod) return;
-      // Don't override Save/Open if user is in an input
-      const tag = (e.target.tagName || '').toLowerCase();
-      const inEditable = tag === 'input' || tag === 'textarea' || e.target.isContentEditable;
-      if (inEditable) return;
-
-      if (e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        handleSaveProject();
-      } else if (e.key.toLowerCase() === 'o') {
-        e.preventDefault();
-        handleOpenProject();
-      }
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [handleSaveProject, handleOpenProject]);
-
   const handleRecheck = useCallback(async () => {
     setDepStatus(null);
     const dep = await window.api.recheckDependencies();
@@ -118,7 +93,8 @@ export default function App() {
     const cfg = await window.api.loadConfigFile();
     if (cfg && !cfg.error) {
       setConfig(cfg);
-      setResolution(cfg.video.allowed_resolutions[0]);
+      // After loading a new festival config, reset to its first allowed resolution
+      setSelectedResolutions([cfg.video.allowed_resolutions[0]]);
     }
     return cfg;
   }, []);
@@ -202,6 +178,25 @@ export default function App() {
         r.missingPaths.map(p => `• ${p.field}: ${p.path}`).join('\n'));
     }
   }, [config]);
+
+  // ─── Keyboard shortcuts ────────────────────────────────────────────────────
+  // ⌘S / Ctrl+S → Save project · ⌘O / Ctrl+O → Open project
+  // (⌘E / ⌘T are handled inside EncodeAction where it owns the encode state)
+  // Declared AFTER handleSaveProject/handleOpenProject to avoid TDZ.
+  useEffect(() => {
+    const onKey = (e) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      const tag = (e.target.tagName || '').toLowerCase();
+      const inEditable = tag === 'input' || tag === 'textarea' || e.target.isContentEditable;
+      if (inEditable) return;
+      const k = e.key.toLowerCase();
+      if (k === 's') { e.preventDefault(); handleSaveProject(); }
+      else if (k === 'o') { e.preventDefault(); handleOpenProject(); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [handleSaveProject, handleOpenProject]);
 
   const effectiveFps = sourceType === 'png' ? pngFrameRate : videoFrameRate;
   const effectiveSource = sourceType === 'png' ? pngData : videoData;
