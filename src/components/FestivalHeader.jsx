@@ -54,8 +54,36 @@ export default function FestivalHeader({ config, depStatus, onLoadConfig }) {
       }}>
         {/* Left: festival branding */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 18 }}>🎬</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {/* Festival icon — embedded data URL from config, falls back to 🎬 */}
+            {config?.festival_icon ? (
+              <img
+                src={config.festival_icon}
+                alt={`${config.festival_name || 'Festival'} logo`}
+                style={{
+                  width: 32, height: 32,
+                  borderRadius: 6,
+                  objectFit: 'cover',
+                  flexShrink: 0,
+                  // Subtle border so light icons don't melt into the dark header
+                  boxShadow: '0 0 0 1px rgba(255,255,255,0.08)',
+                }}
+              />
+            ) : (
+              <span
+                style={{
+                  fontSize: 22,
+                  width: 32, height: 32,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: '#2a2a2a',
+                  borderRadius: 6,
+                  flexShrink: 0,
+                }}
+                title="No festival icon set (festivals can add 'festival_icon' to their config)"
+              >🎬</span>
+            )}
             <div>
               <div style={{
                 color: '#ED8B1E',

@@ -4,6 +4,7 @@
   "version": "2027",
   "contact_email": "Ryan@domefestwest.com",
   "website": "https://domefestwest.com",
+  "festival_icon": "data:image/png;base64,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",
   "submission_deadline": "2027-06-15T23:59:59-07:00",
   "audio_target_lufs": -23,
   "video": {
@@ -15,11 +16,26 @@
     "x265_params": "bframes=8:ref=6:rd=6:subme=7:me=umh:b-adapt=2",
     "container": "mp4",
     "allowed_resolutions": [
-      { "label": "4K", "width": 4096, "height": 4096 },
-      { "label": "6K", "width": 6144, "height": 6144 },
-      { "label": "8K", "width": 8192, "height": 8192 }
+      {
+        "label": "4K",
+        "width": 4096,
+        "height": 4096
+      },
+      {
+        "label": "6K",
+        "width": 6144,
+        "height": 6144
+      },
+      {
+        "label": "8K",
+        "width": 8192,
+        "height": 8192
+      }
     ],
-    "allowed_framerates": [30, 60],
+    "allowed_framerates": [
+      30,
+      60
+    ],
     "high_res_high_fps_vbv": {
       "trigger_resolution": "8K",
       "trigger_framerate": 60,
@@ -29,7 +45,10 @@
   },
   "audio": {
     "preferred_format": "5.1",
-    "accepted_formats": ["5.1", "stereo"],
+    "accepted_formats": [
+      "5.1",
+      "stereo"
+    ],
     "sample_rate_khz": 44.1,
     "ambisonics_supported": false,
     "stems_required": true,

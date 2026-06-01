@@ -47,6 +47,7 @@ Save as e.g. `superfest_config.json`. Every field shown below is required unless
   "version": "2027",
   "contact_email": "deliveries@superfest.example",
   "website": "https://superfest.example",
+  "festival_icon": "data:image/png;base64,iVBORw0KGgo...",
   "submission_deadline": "2027-08-31T23:59:59-07:00",
   "audio_target_lufs": -23,
 
@@ -94,6 +95,7 @@ Save as e.g. `superfest_config.json`. Every field shown below is required unless
 |------|--------|
 | `festival_name`, `festival_short`, `version` | Header branding, delivery folder name, report |
 | `contact_email`, `website` | Onboarding screen + delivery report footer |
+| `festival_icon` (optional) | Base64 data URL of your festival's logo. Renders as a 32×32 icon in the app header next to the festival name. See "Adding your festival icon" below for the easy way to generate it. |
 | `submission_deadline` | Color-coded countdown badge in the header (green > 7 days, yellow < 7, orange < 1, red past) |
 | `audio_target_lufs` | Target for the LUFS analysis verdict (within ±2 LU = OK) |
 | `video.codec` | Currently must be `libx265` (HEVC required by playback systems) |
@@ -108,6 +110,39 @@ Save as e.g. `superfest_config.json`. Every field shown below is required unless
 | `audio.stems_required` | If false, ambient/no-audio is acceptable |
 | `audio.mux_option_available` | If false, the "Embed in video" checkbox is hidden |
 | `delivery.folder_name_template` | The output folder name. `{FilmTitle}` is the sanitized title, `{Year}` is the version |
+
+---
+
+## Adding your festival icon
+
+The optional `festival_icon` field embeds your festival's logo directly in the config JSON. When an artist loads your config, the icon appears in the app header next to your festival's name — making it visually obvious *which festival they're rendering to* (especially valuable for artists submitting to multiple festivals).
+
+### Recommended source image
+
+- **Size**: 128×128 pixels or 256×256 pixels (square)
+- **Format**: PNG with transparency preferred (rounded corners, anti-aliasing)
+- **Style**: Flat, high-contrast — small icons in dark UI need to be readable at 32×32
+- **File size**: Keep under 20 KB after compression; the tool warns if your config has an icon over 200 KB
+
+### Generating the data URL
+
+Clone the repo and run the helper script:
+
+```bash
+node scripts/embed-festival-icon.js path/to/your-festival-logo.png
+```
+
+The script prints the line you paste directly into your config JSON. Example output:
+
+```
+  "festival_icon": "data:image/png;base64,iVBORw0KGgo...",
+```
+
+Just paste it into your festival config (alongside `festival_name`, `festival_short`, etc.) and you're done. No separate icon file to distribute — everything lives in the JSON.
+
+### If you don't have an icon yet
+
+That's fine — the `festival_icon` field is **optional**. The app falls back to a generic 🎬 emoji in a dark square when no icon is provided. Your festival's name and acronym still display correctly. Add the icon later when you have one.
 
 ---
 

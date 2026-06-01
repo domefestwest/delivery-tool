@@ -674,14 +674,26 @@ ipcMain.handle('encode:start', async (_, encodeParams) => {
 
   const year = config.version;
   const safeName = sanitizeFilmTitle(filmTitle);
-  const folderName = `${safeName}_DFW${year}`;
+  const festivalCode = config.festival_short || 'FEST';
+
+  // Folder name from the festival config's template (defaulting to the
+  // legacy {FilmTitle}_{FESTIVAL}{Year} pattern). Festivals can override
+  // via delivery.folder_name_template — e.g. '{FilmTitle}_TOKYO{Year}'
+  // for Tokyo Planetarium Festival, '{FilmTitle}_FPF{Year}' for FPF, etc.
+  const template = config.delivery?.folder_name_template || '{FilmTitle}_{FESTIVAL}{Year}';
+  const folderName = template
+    .replace('{FilmTitle}', safeName)
+    .replace('{FESTIVAL}', festivalCode)
+    .replace('{Year}', year);
+
   const deliveryFolder = path.join(outputDir, folderName);
   const videoFolder = path.join(deliveryFolder, 'video');
   const audioFolder = path.join(deliveryFolder, 'audio');
   fs.mkdirSync(videoFolder, { recursive: true });
   fs.mkdirSync(audioFolder, { recursive: true });
 
-  const outputFilename = `${safeName}_DFW${year}_${resolution.label}.mp4`;
+  // Output filename mirrors the folder pattern but adds resolution and .mp4
+  const outputFilename = `${safeName}_${festivalCode}${year}_${resolution.label}.mp4`;
   const outputVideoPath = path.join(videoFolder, outputFilename);
 
   const ffArgs = buildEncodeArgs({
