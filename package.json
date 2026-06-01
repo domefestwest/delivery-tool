@@ -1,6 +1,6 @@
 {
   "name": "dome-delivery-tool",
-  "version": "0.15.1",
+  "version": "0.15.2",
   "description": "Dome Fest West official film delivery and encoding tool",
   "main": "main.js",
   "homepage": "./",
