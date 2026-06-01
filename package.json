@@ -21,6 +21,7 @@
     "copyright": "Copyright © 2027 Dome Festival Delivery Tool contributors",
     "extends": null,
     "asar": true,
+    "afterPack": "./scripts/after-pack.js",
     "directories": {
       "buildResources": "build-resources",
       "output": "dist"

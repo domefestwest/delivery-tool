@@ -29,24 +29,36 @@ You only need to do this **once** per install.
 
 ### macOS
 
-When you double-click the `.dmg` you'll be able to drag the app into your Applications folder normally. The warning appears when you first try to launch it.
+When you double-click the `.dmg` you'll be able to drag the app into your Applications folder normally. macOS will block the first launch attempt with a security warning. Depending on your macOS version and the message you see, follow ONE of the three options below.
 
-**Recommended bypass:**
+**Option A: "macOS cannot verify the developer" message**
 
 1. Open **Applications** in Finder
 2. **Right-click** (or Ctrl-click) the **Dome Festival Delivery Tool** app
 3. Choose **Open** from the menu
-4. macOS shows a dialog: *"macOS cannot verify the developer..."* — click **Open** anyway
+4. Click **Open** in the dialog that appears
 5. The app launches. You won't see this warning again.
 
-**If that doesn't work** (newer macOS may block right-click bypass):
+**Option B: "is blocked from use" or you don't see the right-click bypass**
 
 1. Try to open the app normally (it'll get blocked)
 2. Open **System Settings** → **Privacy & Security**
 3. Scroll down to **Security**
 4. You'll see: *"Dome Festival Delivery Tool was blocked..."* — click **Open Anyway**
 5. Authenticate with your password / Touch ID
-6. The app launches.
+
+**Option C: "is damaged and can't be opened" message**
+
+> Despite what the dialog says, the app is NOT actually damaged. This happens when your browser added a "quarantine" flag to the downloaded file AND the app isn't yet code-signed. The fix takes one Terminal command.
+
+1. Open **Terminal** (in Applications → Utilities, or press ⌘+Space and type "Terminal")
+2. Copy and paste this command, then press Enter:
+   ```bash
+   xattr -dr com.apple.quarantine "/Applications/Dome Festival Delivery Tool.app"
+   ```
+3. Now open the app normally from Applications — it should launch.
+
+If you still see warnings after this, fall back to **Option B** (System Settings → Privacy & Security → Open Anyway).
 
 ### Windows
 
