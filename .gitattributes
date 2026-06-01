@@ -1,0 +1,5 @@
+ffmpeg/mac/ffmpeg filter=lfs diff=lfs merge=lfs -text
+ffmpeg/mac/ffprobe filter=lfs diff=lfs merge=lfs -text
+ffmpeg/win/*.exe filter=lfs diff=lfs merge=lfs -text
+ffmpeg/linux/ffmpeg filter=lfs diff=lfs merge=lfs -text
+ffmpeg/linux/ffprobe filter=lfs diff=lfs merge=lfs -text
