@@ -49,16 +49,18 @@ When you double-click the `.dmg` you'll be able to drag the app into your Applic
 
 **Option C: "is damaged and can't be opened" message**
 
-> Despite what the dialog says, the app is NOT actually damaged. This happens when your browser added a "quarantine" flag to the downloaded file AND the app isn't yet code-signed. The fix takes one Terminal command.
+> This only affects versions **v0.16.3 and older**. Version **v0.16.4 onwards** is ad-hoc signed and no longer hits this error path — you'll get the friendlier "unidentified developer" warning (Option A) instead. If you're seeing the "damaged" message, either download the latest release or follow the steps below.
+
+Despite what the dialog says, the app is NOT actually damaged. Your browser added a "quarantine" flag to the downloaded file, and on older builds the app wasn't signed enough for macOS to show the bypass UI. The fix takes one Terminal command.
 
 1. Open **Terminal** (in Applications → Utilities, or press ⌘+Space and type "Terminal")
-2. Copy and paste this command, then press Enter:
+2. Copy and paste this command, then press Enter (you'll be prompted for your password):
    ```bash
-   xattr -dr com.apple.quarantine "/Applications/Dome Festival Delivery Tool.app"
+   sudo xattr -rd com.apple.quarantine "/Applications/Dome Festival Delivery Tool.app"
    ```
-3. Now open the app normally from Applications — it should launch.
+3. Now go to **System Settings** → **Privacy & Security**, scroll to **Security**, and click **Open Anyway**
 
-If you still see warnings after this, fall back to **Option B** (System Settings → Privacy & Security → Open Anyway).
+Note: the regular `xattr` command without `sudo` often appears to succeed but is silently blocked by /Applications permissions. Always use `sudo`.
 
 ### Windows
 
