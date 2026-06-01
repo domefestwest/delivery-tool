@@ -22,6 +22,7 @@ const { checkOutputDiskSpace } = require('./src-main/disk-space');
 const { probeAndVerify }      = require('./src-main/output-verification');
 const { analyzeLoudness, classifyLoudness } = require('./src-main/loudness');
 const { zipDeliveryFolder }   = require('./src-main/zip-package');
+const { generateThumbnail, cleanupOldThumbnails } = require('./src-main/preview-generator');
 const settingsStore           = require('./src-main/settings-store');
 const {
   computeMd5,
@@ -337,6 +338,52 @@ ipcMain.handle('probe:audio', async (_, filePath) => {
   } catch (err) {
     return { error: err.message };
   }
+});
+
+// ─── IPC: Source auto-detection (for drop zone) ───────────────────────────────
+// Drop a path → tell the renderer whether it's a video, PNG sequence (or folder
+// containing one), or unrecognized.
+
+ipcMain.handle('source:detect', async (_, p) => {
+  if (!p) return { kind: 'unknown' };
+  if (!fs.existsSync(p)) return { kind: 'unknown', error: 'Path not found' };
+
+  const stat = fs.statSync(p);
+
+  // Directory → check for PNGs inside
+  if (stat.isDirectory()) {
+    try {
+      const files = fs.readdirSync(p).filter(f => /\.png$/i.test(f));
+      if (files.length > 0) {
+        return { kind: 'png-folder', folderPath: p, pngCount: files.length };
+      }
+      return { kind: 'unknown', error: 'Folder has no PNG files' };
+    } catch (err) {
+      return { kind: 'unknown', error: err.message };
+    }
+  }
+
+  // File: detect by extension
+  if (/\.(mp4|mov|m4v)$/i.test(p)) {
+    return { kind: 'video', filePath: p };
+  }
+  if (/\.png$/i.test(p)) {
+    // Single PNG → use its parent folder for sequence scan
+    return { kind: 'png-folder', folderPath: path.dirname(p), pngCount: 1 };
+  }
+  return { kind: 'unknown', error: 'Unrecognized file type' };
+});
+
+// ─── IPC: Preview thumbnail ───────────────────────────────────────────────────
+
+ipcMain.handle('preview:generate', async (_, opts) => {
+  if (!activeFFmpegPath) return { error: 'FFmpeg not available' };
+  return generateThumbnail({
+    ffmpegPath: activeFFmpegPath,
+    sourceType: opts.sourceType,
+    sourcePath: opts.sourcePath,
+    seekSeconds: opts.seekSeconds ?? 1,
+  });
 });
 
 // ─── IPC: Pre-flight disk space check ─────────────────────────────────────────
@@ -747,4 +794,6 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   stopPowerSaveBlocker();
+  // Best-effort cleanup of old preview thumbnails
+  try { cleanupOldThumbnails(); } catch (_) {}
 });

@@ -24,6 +24,12 @@ contextBridge.exposeInMainWorld('api', {
   probeVideo:      (filePath)   => ipcRenderer.invoke('probe:video', filePath),
   probeAudio:      (filePath)   => ipcRenderer.invoke('probe:audio', filePath),
 
+  // Source auto-detection (for drop zone)
+  detectSource:    (path)       => ipcRenderer.invoke('source:detect', path),
+
+  // Preview thumbnail
+  generatePreview: (opts)       => ipcRenderer.invoke('preview:generate', opts),
+
   // Pre-flight
   checkDiskSpace:  (opts) => ipcRenderer.invoke('preflight:disk-space', opts),
 

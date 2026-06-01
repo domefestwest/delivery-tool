@@ -1,19 +1,18 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import OnboardingScreen from './components/OnboardingScreen';
 import FestivalHeader from './components/FestivalHeader';
-import FilmInfo from './components/FilmInfo';
-import SourceInput from './components/SourceInput/SourceInput';
-import EncodingSettings from './components/EncodingSettings';
-import EncodePanel from './components/EncodePanel';
+import SourcePreview from './components/SourcePreview';
+import SettingsPanel from './components/SettingsPanel';
+import EncodeAction from './components/EncodeAction';
 import './App.css';
 
 export default function App() {
   const [depStatus, setDepStatus] = useState(null);
-  const [config, setConfig] = useState(null);
-  const [settings, setSettings] = useState(null);  // persisted user settings
+  const [config, setConfig]       = useState(null);
+  const [settings, setSettings]   = useState(null);
 
-  const [filmTitle, setFilmTitle]   = useState('');
-  const [artistName, setArtistName] = useState('');
+  const [filmTitle, setFilmTitle]     = useState('');
+  const [artistName, setArtistName]   = useState('');
 
   const [sourceType, setSourceType] = useState('png');
   const [pngData, setPngData]       = useState(null);
@@ -33,13 +32,11 @@ export default function App() {
   const [audioInterleaved, setAudioInterleaved] = useState(null);
   const [muxAudio, setMuxAudio]     = useState(false);
 
-  // Settings toggles
-  const [autoZip, setAutoZip] = useState(false);
+  const [autoZip, setAutoZip]                   = useState(false);
   const [notifyOnComplete, setNotifyOnComplete] = useState(true);
   const [autoOpenFolder, setAutoOpenFolder]     = useState(true);
   const [preventSleep, setPreventSleep]         = useState(true);
 
-  // Settled flag — only persist AFTER initial settings load
   const settingsHydrated = useRef(false);
 
   // Initial bootstrap
@@ -54,7 +51,6 @@ export default function App() {
       setConfig(cfg);
       setSettings(sett);
 
-      // Hydrate from persisted settings
       if (sett) {
         if (sett.artistName) setArtistName(sett.artistName);
         if (sett.lastOutputDir) setOutputDir(sett.lastOutputDir);
@@ -72,7 +68,7 @@ export default function App() {
     })();
   }, []);
 
-  // Persist settings whenever they change (debounced via microtask)
+  // Persist settings whenever toggles change
   useEffect(() => {
     if (!settingsHydrated.current) return;
     window.api.updateSettings({
@@ -100,7 +96,6 @@ export default function App() {
     return cfg;
   }, []);
 
-  // Recent-encode replay
   const handleReplayRecent = useCallback((entry) => {
     if (!entry) return;
     setFilmTitle(entry.filmTitle || '');
@@ -114,17 +109,13 @@ export default function App() {
   const effectiveFps = sourceType === 'png' ? pngFrameRate : videoFrameRate;
   const effectiveSource = sourceType === 'png' ? pngData : videoData;
   const encodeReady = !!(
-    filmTitle.trim() &&
-    effectiveSource &&
-    resolution &&
-    effectiveFps &&
-    outputDir &&
-    depStatus?.has10BitX265
+    filmTitle.trim() && effectiveSource && resolution &&
+    effectiveFps && outputDir && depStatus?.has10BitX265
   );
 
   if (depStatus === null) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#1a1a1a' }}>
+      <div className="boot-loader">
         <div style={{ textAlign: 'center', color: '#888' }}>
           <div style={{ fontSize: 28, marginBottom: 12 }}>🎬</div>
           <div>Checking dependencies…</div>
@@ -146,81 +137,64 @@ export default function App() {
       />
 
       <div className="app-scroll">
-        <FilmInfo
-          filmTitle={filmTitle}
-          artistName={artistName}
-          onTitleChange={setFilmTitle}
-          onArtistChange={setArtistName}
-          recentEncodes={settings?.recentEncodes || []}
-          onReplayRecent={handleReplayRecent}
-        />
+        {/* Two-column main area */}
+        <div className="two-col">
+          <SourcePreview
+            config={config}
+            sourceType={sourceType}
+            onSourceTypeChange={setSourceType}
+            pngFolder={pngFolder} pngData={pngData} pngFrameRate={pngFrameRate}
+            onPngFolderChange={setPngFolder}
+            onPngDataChange={setPngData}
+            onPngFrameRateChange={setPngFrameRate}
+            videoPath={videoPath} videoData={videoData} videoFrameRate={videoFrameRate}
+            onVideoPathChange={setVideoPath}
+            onVideoDataChange={setVideoData}
+            onVideoFrameRateChange={setVideoFrameRate}
+            onFrameRateWarning={setFrameRateWarning}
+            frameRateWarning={frameRateWarning}
+          />
 
-        <SourceInput
+          <SettingsPanel
+            config={config}
+            filmTitle={filmTitle} artistName={artistName}
+            onTitleChange={setFilmTitle} onArtistChange={setArtistName}
+            recentEncodes={settings?.recentEncodes || []}
+            onReplayRecent={handleReplayRecent}
+            resolution={resolution} onResolutionChange={setResolution}
+            outputDir={outputDir} onOutputDirChange={setOutputDir}
+            audioMode={audioMode} onAudioModeChange={setAudioMode}
+            audioStems={audioStems} onAudioStemsChange={setAudioStems}
+            audioInterleaved={audioInterleaved}
+            onAudioInterleavedChange={setAudioInterleaved}
+            muxAudio={muxAudio} onMuxAudioChange={setMuxAudio}
+            depStatus={depStatus}
+            useGPU={useGPU} onUseGPUChange={setUseGPU}
+            autoZip={autoZip} onAutoZipChange={setAutoZip}
+            notifyOnComplete={notifyOnComplete}
+            onNotifyOnCompleteChange={setNotifyOnComplete}
+            autoOpenFolder={autoOpenFolder}
+            onAutoOpenFolderChange={setAutoOpenFolder}
+            preventSleep={preventSleep}
+            onPreventSleepChange={setPreventSleep}
+          />
+        </div>
+
+        {/* Bottom action area (full width) */}
+        <EncodeAction
           config={config}
+          filmTitle={filmTitle} artistName={artistName}
           sourceType={sourceType}
-          onSourceTypeChange={setSourceType}
-          pngFolder={pngFolder}
-          pngData={pngData}
-          pngFrameRate={pngFrameRate}
-          onPngFolderChange={setPngFolder}
-          onPngDataChange={setPngData}
-          onPngFrameRateChange={setPngFrameRate}
-          videoPath={videoPath}
-          videoData={videoData}
-          videoFrameRate={videoFrameRate}
-          onVideoPathChange={setVideoPath}
-          onVideoDataChange={setVideoData}
-          onVideoFrameRateChange={setVideoFrameRate}
-          onFrameRateWarning={setFrameRateWarning}
-          frameRateWarning={frameRateWarning}
-        />
-
-        <EncodingSettings
-          config={config}
-          resolution={resolution}
-          onResolutionChange={setResolution}
-          outputDir={outputDir}
-          onOutputDirChange={setOutputDir}
-          audioMode={audioMode}
-          onAudioModeChange={setAudioMode}
-          audioStems={audioStems}
-          onAudioStemsChange={setAudioStems}
-          audioInterleaved={audioInterleaved}
-          onAudioInterleavedChange={setAudioInterleaved}
-          muxAudio={muxAudio}
-          onMuxAudioChange={setMuxAudio}
-        />
-
-        <EncodePanel
-          config={config}
-          filmTitle={filmTitle}
-          artistName={artistName}
-          sourceType={sourceType}
-          pngData={pngData}
-          pngFolder={pngFolder}
-          pngFrameRate={pngFrameRate}
-          videoPath={videoPath}
-          videoData={videoData}
-          videoFrameRate={videoFrameRate}
-          resolution={resolution}
-          outputDir={outputDir}
-          audioMode={audioMode}
-          audioStems={audioStems}
-          audioInterleaved={audioInterleaved}
-          muxAudio={muxAudio}
+          pngData={pngData} pngFolder={pngFolder} pngFrameRate={pngFrameRate}
+          videoPath={videoPath} videoData={videoData} videoFrameRate={videoFrameRate}
+          resolution={resolution} outputDir={outputDir}
+          audioMode={audioMode} audioStems={audioStems}
+          audioInterleaved={audioInterleaved} muxAudio={muxAudio}
           frameRateWarning={frameRateWarning}
           encodeReady={encodeReady}
-          depStatus={depStatus}
-          useGPU={useGPU}
-          onUseGPUChange={setUseGPU}
-          autoZip={autoZip}
-          onAutoZipChange={setAutoZip}
-          notifyOnComplete={notifyOnComplete}
-          onNotifyOnCompleteChange={setNotifyOnComplete}
-          autoOpenFolder={autoOpenFolder}
-          onAutoOpenFolderChange={setAutoOpenFolder}
-          preventSleep={preventSleep}
-          onPreventSleepChange={setPreventSleep}
+          depStatus={depStatus} useGPU={useGPU}
+          autoZip={autoZip} notifyOnComplete={notifyOnComplete}
+          autoOpenFolder={autoOpenFolder} preventSleep={preventSleep}
         />
       </div>
     </div>
