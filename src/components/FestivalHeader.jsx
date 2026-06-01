@@ -1,5 +1,15 @@
 import React, { useState } from 'react';
 
+function deadlineState(deadlineISO) {
+  if (!deadlineISO) return null;
+  const ms = new Date(deadlineISO).getTime() - Date.now();
+  const days = ms / (1000 * 60 * 60 * 24);
+  if (days < 0) return { status: 'past', daysLeft: Math.ceil(-days), label: `${Math.ceil(-days)} days past deadline` };
+  if (days < 1) return { status: 'urgent', daysLeft: 0, label: `Deadline today!` };
+  if (days < 7) return { status: 'soon', daysLeft: Math.floor(days), label: `${Math.floor(days)} day${days < 2 ? '' : 's'} until deadline` };
+  return { status: 'ok', daysLeft: Math.floor(days), label: `${Math.floor(days)} days until deadline` };
+}
+
 export default function FestivalHeader({ config, depStatus, onLoadConfig }) {
   const [showCapModal, setShowCapModal] = useState(false);
   const [loadError, setLoadError] = useState(null);
@@ -7,6 +17,11 @@ export default function FestivalHeader({ config, depStatus, onLoadConfig }) {
   const festivalName = config
     ? `${config.festival_name} ${config.version}`
     : 'Dome Fest West 2027';
+  const deadline = deadlineState(config?.submission_deadline);
+  const deadlineColor = !deadline ? null :
+    deadline.status === 'past' ? '#e05252' :
+    deadline.status === 'urgent' ? '#ED8B1E' :
+    deadline.status === 'soon' ? '#F2C200' : '#4caf6e';
 
   const handleLoadConfig = async () => {
     setLoadError(null);
@@ -66,6 +81,17 @@ export default function FestivalHeader({ config, depStatus, onLoadConfig }) {
 
           {loadError && (
             <span style={{ color: '#f08080', fontSize: 12 }}>⚠ {loadError}</span>
+          )}
+
+          {deadline && (
+            <>
+              <div style={{ width: 1, height: 22, background: '#333' }} />
+              <span title={`Submission deadline: ${new Date(config.submission_deadline).toLocaleString()}`}
+                    style={{ color: deadlineColor, fontSize: 11, fontWeight: 700,
+                             textTransform: 'uppercase', letterSpacing: '0.06em', cursor: 'help' }}>
+                ⏰ {deadline.label}
+              </span>
+            </>
           )}
         </div>
 

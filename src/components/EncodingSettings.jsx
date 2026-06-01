@@ -41,9 +41,9 @@ export default function EncodingSettings({
           </div>
         </div>
 
-        {/* Encoding params — read-only from config */}
+        {/* Encoding params — read-only from config, with hover help */}
         <div className="form-group">
-          <label className="label">Encoding Parameters <span style={{ color: '#666', fontWeight: 400 }}>(from config)</span></label>
+          <label className="label">Encoding Parameters <span style={{ color: '#666', fontWeight: 400 }}>(from config — hover for help)</span></label>
           <div style={{
             background: '#1e1e1e',
             border: '1px solid #383838',
@@ -54,10 +54,29 @@ export default function EncodingSettings({
             color: '#888',
             lineHeight: 1.8
           }}>
-            <span style={{ color: '#ED8B1E' }}>libx265</span>
-            {' '}· CRF <span style={{ color: '#F2C200' }}>{config?.video?.crf ?? 18}</span>
-            {' '}· <span style={{ color: '#4caf6e' }}>10-bit</span> yuv420p10le
-            {' '}· preset <span style={{ color: '#4a9ede' }}>{config?.video?.preset ?? 'slow'}</span>
+            <span style={{ color: '#ED8B1E', cursor: 'help' }}
+              title="libx265 is the H.265 / HEVC encoder. The festival requires HEVC for SkySkan playback compatibility.">
+              libx265
+            </span>
+            {' '}· CRF{' '}
+            <span style={{ color: '#F2C200', cursor: 'help' }}
+              title={'CRF (Constant Rate Factor) controls quality vs file size. Lower CRF = better quality, larger file. CRF 18 is visually lossless for most content. Range: 0 (lossless) to 51 (worst). DFW spec is CRF ' + (config?.video?.crf ?? 18) + '.'}>
+              {config?.video?.crf ?? 18}
+            </span>
+            {' '}·{' '}
+            <span style={{ color: '#4caf6e', cursor: 'help' }}
+              title="10-bit color depth means 1024 brightness levels per channel instead of 256 (8-bit). Essential for dome projection where banding on smooth gradients (sky, space) is highly visible on 15m+ screens.">
+              10-bit
+            </span>{' '}
+            <span style={{ cursor: 'help' }}
+              title="yuv420p10le is the pixel format: YUV 4:2:0 chroma subsampling, 10 bits per channel, little-endian. The 4:2:0 chroma subsampling is what SkySkan can decode efficiently.">
+              yuv420p10le
+            </span>
+            {' '}· preset{' '}
+            <span style={{ color: '#4a9ede', cursor: 'help' }}
+              title="Encoder preset controls how hard libx265 works on compression. 'slow' gives ~20% better compression than 'medium' for the same quality. Encode time is worth it for a delivery master.">
+              {config?.video?.preset ?? 'slow'}
+            </span>
           </div>
         </div>
       </div>

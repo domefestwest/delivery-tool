@@ -10,42 +10,95 @@ export default function PNGSequenceTab({
   const [manualPattern, setManualPattern] = useState('');
   const [showManual, setShowManual] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
 
   const allowedFps = config?.video?.allowed_framerates || ALLOWED_FPS;
 
-  const handleSelectFolder = async () => {
-    const folder = await window.api.openFolder({ title: 'Select PNG Sequence Folder' });
-    if (!folder) return;
-    onFolderChange(folder);
+  async function scanFolder(path) {
+    onFolderChange(path);
     setConfirmed(false);
     onDataChange(null);
     setScanning(true);
-    const result = await window.api.scanPngSequence(folder);
+    const result = await window.api.scanPngSequence(path);
     setScanning(false);
-    if (result.error) {
-      onDataChange({ error: result.error });
-    } else {
-      onDataChange(result);
-    }
+    onDataChange(result.error ? { error: result.error } : result);
+  }
+
+  const handleSelectFolder = async () => {
+    const f = await window.api.openFolder({ title: 'Select PNG Sequence Folder' });
+    if (f) scanFolder(f);
   };
 
   const handleRescan = async () => {
-    if (!folder) return;
-    setConfirmed(false);
-    onDataChange(null);
-    setScanning(true);
-    const result = await window.api.scanPngSequence(folder);
-    setScanning(false);
-    onDataChange(result.error ? { error: result.error } : result);
+    if (folder) scanFolder(folder);
   };
 
   const handleConfirm = () => setConfirmed(true);
 
+  // Drag-and-drop handlers
+  const handleDragEnter = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    setDragActive(true);
+  };
+  const handleDragLeave = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    setDragActive(false);
+  };
+  const handleDragOver = (e) => {
+    e.preventDefault(); e.stopPropagation();
+  };
+  const handleDrop = async (e) => {
+    e.preventDefault(); e.stopPropagation();
+    setDragActive(false);
+    const files = Array.from(e.dataTransfer.files || []);
+    if (!files.length) return;
+    // Try the first file's path — if it's a directory, scan it; else scan its parent
+    const f = files[0];
+    const fullPath = window.api.getPathForFile(f);
+    if (!fullPath) return;
+    // Heuristic: if dropping a single .png file, use its parent folder
+    if (/\.png$/i.test(fullPath)) {
+      const parent = fullPath.replace(/[\\/][^\\/]+$/, '');
+      scanFolder(parent);
+    } else {
+      // Assume it's a directory or use its parent
+      scanFolder(fullPath);
+    }
+  };
+
   return (
-    <div>
-      {/* Folder picker */}
+    <div
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      style={{
+        position: 'relative',
+        border: dragActive ? '2px dashed #ED8B1E' : '2px dashed transparent',
+        borderRadius: 8,
+        padding: dragActive ? 16 : 0,
+        margin: dragActive ? -16 : 0,
+        background: dragActive ? 'rgba(237,139,30,0.05)' : 'transparent',
+        transition: 'all 0.15s',
+      }}
+    >
+      {dragActive && (
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(26,26,26,0.8)', borderRadius: 8,
+          color: '#ED8B1E', fontSize: 18, fontWeight: 700,
+          pointerEvents: 'none', zIndex: 10,
+        }}>
+          📁 Drop PNG folder or any frame to scan
+        </div>
+      )}
+
       <div style={{ marginBottom: 16 }}>
-        <label className="label">PNG Sequence Folder</label>
+        <label className="label">
+          PNG Sequence Folder
+          <span style={{ color: '#555', marginLeft: 6, fontSize: 11 }}>(or drag a folder/frame here)</span>
+        </label>
         <div className="path-picker">
           <div className={`path-display ${folder ? 'has-value' : ''}`}>
             {folder || 'No folder selected'}
@@ -56,14 +109,12 @@ export default function PNGSequenceTab({
         </div>
       </div>
 
-      {/* Scanning indicator */}
       {scanning && (
         <div className="alert alert-info" style={{ marginBottom: 12 }}>
           🔍 Scanning for PNG sequence…
         </div>
       )}
 
-      {/* Error */}
       {data?.error && (
         <div className="alert alert-error" style={{ marginBottom: 12 }}>
           ✕ {data.error}
@@ -77,14 +128,24 @@ export default function PNGSequenceTab({
         </div>
       )}
 
+      {/* Gap warning (CRITICAL: FFmpeg silently substitutes missing frames!) */}
+      {data && !data.error && data.gaps?.hasGaps && (
+        <div className="alert alert-error" style={{ marginBottom: 12 }}>
+          ⚠ <strong>Missing frames detected.</strong> {data.gapReport}
+          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.9 }}>
+            FFmpeg silently substitutes the previous frame on missing files —
+            your output would contain frozen frames at the gaps. Re-render
+            the missing frames before encoding.
+          </div>
+        </div>
+      )}
+
       {/* Detection result */}
       {data && !data.error && !confirmed && (
         <div style={{
           background: '#1e2a1e',
           border: '1px solid rgba(76,175,110,0.3)',
-          borderRadius: 8,
-          padding: '14px 18px',
-          marginBottom: 12
+          borderRadius: 8, padding: '14px 18px', marginBottom: 12,
         }}>
           <div style={{ color: '#7ecf96', fontWeight: 700, marginBottom: 8 }}>
             ✓ Sequence detected
@@ -95,6 +156,9 @@ export default function PNGSequenceTab({
             </div>
             <div><span style={{ color: '#666' }}>Frame count: </span>
               <strong style={{ color: '#e8e8e8' }}>{data.frameCount.toLocaleString()} frames</strong>
+              {data.gaps && !data.gaps.hasGaps && (
+                <span style={{ color: '#7ecf96', marginLeft: 8, fontSize: 12 }}>(contiguous ✓)</span>
+              )}
             </div>
             <div style={{ marginTop: 8 }}>
               {data.bitDepth === 16 ? (
@@ -129,7 +193,6 @@ export default function PNGSequenceTab({
         </div>
       )}
 
-      {/* Confirmed state */}
       {data && !data.error && confirmed && (
         <div className="alert alert-ok" style={{ marginBottom: 12 }}>
           ✓ {data.frameCount.toLocaleString()} frames · pattern: <code style={{ background: 'rgba(0,0,0,0.2)', padding: '1px 5px', borderRadius: 3 }}>{data.pattern}</code>
@@ -142,7 +205,6 @@ export default function PNGSequenceTab({
         </div>
       )}
 
-      {/* Manual pattern input */}
       {showManual && (
         <div style={{ marginBottom: 12 }}>
           <label className="label">Manual pattern (FFmpeg glob format, e.g. <code>frame_%04d.png</code>)</label>
@@ -158,10 +220,12 @@ export default function PNGSequenceTab({
               className="btn btn-secondary"
               onClick={() => {
                 if (manualPattern && folder) {
-                  // Use window.api to build the path safely (path.join in main process)
-                  // In the renderer we approximate with the platform separator from the folder string
                   const sep = folder.includes('\\') ? '\\' : '/';
-                  onDataChange({ pattern: manualPattern, ffmpegPattern: folder + sep + manualPattern, frameCount: '?', bitDepth: null });
+                  onDataChange({
+                    pattern: manualPattern,
+                    ffmpegPattern: folder + sep + manualPattern,
+                    frameCount: '?', bitDepth: null, gaps: { hasGaps: false }
+                  });
                   setShowManual(false);
                 }
               }}
@@ -172,7 +236,6 @@ export default function PNGSequenceTab({
         </div>
       )}
 
-      {/* Frame rate selector */}
       {(confirmed || (data && !data.error)) && (
         <div style={{ marginTop: 16 }}>
           <label className="label">Frame Rate <span style={{ color: '#ED8B1E' }}>*</span></label>

@@ -4,6 +4,8 @@
   "version": "2027",
   "contact_email": "Ryan@domefestwest.com",
   "website": "https://domefestwest.com",
+  "submission_deadline": "2027-06-15T23:59:59-07:00",
+  "audio_target_lufs": -23,
   "video": {
     "codec": "libx265",
     "bit_depth": 10,

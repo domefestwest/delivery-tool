@@ -1,29 +1,28 @@
 /**
  * main.js — Electron main process entry point.
  *
- * After the cross-platform refactor, this file is just:
- *   1. Electron lifecycle (window creation, app activation)
- *   2. IPC handler bindings — each handler delegates to a module in src-main/
- *   3. Application state (active ffmpeg paths, GPU encoder, current config)
- *
- * All platform-specific decisions live in src-main/platform.js.
- * All FFmpeg argument construction lives in src-main/encode-args.js.
- * All capability detection lives in src-main/ffmpeg-capabilities.js,
- *   gpu-detection.js, and dependency-check.js.
+ * IPC orchestration + Electron lifecycle.
+ * All business logic lives in src-main/* modules.
  */
 
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Notification, powerSaveBlocker } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 
-// Modules (pure / I/O-explicit)
-const platform        = require('./src-main/platform');
-const { runWithTimeout } = require('./src-main/ffmpeg-capabilities');
-const { runDependencyCheck } = require('./src-main/dependency-check');
-const { processAudio }       = require('./src-main/audio-processor');
-const { buildEncodeArgs }    = require('./src-main/encode-args');
+const platform                = require('./src-main/platform');
+const { runWithTimeout }      = require('./src-main/ffmpeg-capabilities');
+const { runDependencyCheck }  = require('./src-main/dependency-check');
+const { processAudio }        = require('./src-main/audio-processor');
+const { buildEncodeArgs }     = require('./src-main/encode-args');
 const { buildDeliveryReport } = require('./src-main/delivery-report');
+const { detectGaps, formatGapReport } = require('./src-main/gap-detector');
+const { estimateOutputSize, recommendedFreeBytes } = require('./src-main/output-estimate');
+const { checkOutputDiskSpace } = require('./src-main/disk-space');
+const { probeAndVerify }      = require('./src-main/output-verification');
+const { analyzeLoudness, classifyLoudness } = require('./src-main/loudness');
+const { zipDeliveryFolder }   = require('./src-main/zip-package');
+const settingsStore           = require('./src-main/settings-store');
 const {
   computeMd5,
   sanitizeFilmTitle,
@@ -43,8 +42,6 @@ function getAppVersion() {
   }
 }
 
-// ─── Bundled FFmpeg path ──────────────────────────────────────────────────────
-
 function bundledFFmpegPath() {
   return platform.getBundledFFmpegPath({
     appRoot: __dirname,
@@ -62,6 +59,7 @@ let activeFFprobePath = null;
 let activeConfig = null;
 let activeGPUEncoder = null;
 let encodeProcess = null;
+let powerSaveBlockerId = null;
 
 function applyDepResult(result) {
   if (result.found && result.has10BitX265) {
@@ -112,6 +110,27 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
+// ─── Power save blocker helpers ───────────────────────────────────────────────
+
+function startPowerSaveBlocker() {
+  if (powerSaveBlockerId !== null) return;
+  try {
+    powerSaveBlockerId = powerSaveBlocker.start('prevent-display-sleep');
+    console.log('[Power] Sleep prevention ON (id=' + powerSaveBlockerId + ')');
+  } catch (err) {
+    console.warn('[Power] Could not start sleep blocker:', err.message);
+  }
+}
+
+function stopPowerSaveBlocker() {
+  if (powerSaveBlockerId === null) return;
+  try {
+    powerSaveBlocker.stop(powerSaveBlockerId);
+    console.log('[Power] Sleep prevention OFF');
+  } catch (_) {}
+  powerSaveBlockerId = null;
+}
+
 // ─── IPC: Dependency check ────────────────────────────────────────────────────
 
 ipcMain.handle('dep:check', async () => {
@@ -155,6 +174,7 @@ ipcMain.handle('config:load-file', async () => {
 ipcMain.handle('dialog:open-folder', async (_, opts) => {
   const r = await dialog.showOpenDialog(mainWindow, {
     title: opts?.title || 'Select Folder',
+    defaultPath: opts?.defaultPath,
     properties: ['openDirectory'],
   });
   return r.canceled ? null : r.filePaths[0];
@@ -164,6 +184,7 @@ ipcMain.handle('dialog:open-file', async (_, opts) => {
   const r = await dialog.showOpenDialog(mainWindow, {
     title: opts?.title || 'Select File',
     filters: opts?.filters || [],
+    defaultPath: opts?.defaultPath,
     properties: ['openFile'],
   });
   return r.canceled ? null : r.filePaths[0];
@@ -173,6 +194,7 @@ ipcMain.handle('dialog:open-files', async (_, opts) => {
   const r = await dialog.showOpenDialog(mainWindow, {
     title: opts?.title || 'Select Files',
     filters: opts?.filters || [],
+    defaultPath: opts?.defaultPath,
     properties: ['openFile', 'multiSelections'],
   });
   return r.canceled ? null : r.filePaths;
@@ -181,22 +203,22 @@ ipcMain.handle('dialog:open-files', async (_, opts) => {
 ipcMain.handle('dialog:save-folder', async (_, opts) => {
   const r = await dialog.showOpenDialog(mainWindow, {
     title: opts?.title || 'Choose Output Folder',
+    defaultPath: opts?.defaultPath,
     properties: ['openDirectory', 'createDirectory'],
   });
   return r.canceled ? null : r.filePaths[0];
 });
 
 ipcMain.handle('shell:open-path', async (_, p) => shell.openPath(p));
+ipcMain.handle('shell:show-in-folder', async (_, p) => shell.showItemInFolder(p));
 
-// ─── IPC: PNG sequence scanning ───────────────────────────────────────────────
+// ─── IPC: PNG sequence scanning (with gap detection) ──────────────────────────
 
 ipcMain.handle('scan:png-sequence', async (_, folderPath) => {
   try {
     const files = fs.readdirSync(folderPath).filter(f => /\.png$/i.test(f)).sort();
     if (!files.length) return { error: 'No PNG files found in this folder.' };
 
-    // Pattern detection: optional prefix + 2-10 digit run + .png
-    // Allows bare-number sequences like 0001.png (empty prefix)
     const patterns = {};
     for (const file of files) {
       const m = file.match(/^(.*?)(\d{2,10})(\.png)$/i);
@@ -232,9 +254,12 @@ ipcMain.handle('scan:png-sequence', async (_, folderPath) => {
       } catch (_) {}
     }
 
-    // Build ffmpeg pattern with %0Nd
+    // Build ffmpeg pattern
     const m = matchedFiles[0].match(/^(.*?)(\d{2,10})(\.png)$/i);
     const ffmpegPattern = path.join(folderPath, `${m[1]}%0${m[2].length}d.png`);
+
+    // Gap detection (NEW)
+    const gaps = detectGaps(matchedFiles);
 
     return {
       pattern: patternStr,
@@ -243,6 +268,8 @@ ipcMain.handle('scan:png-sequence', async (_, folderPath) => {
       bitDepth,
       firstFrame: path.join(folderPath, matchedFiles[0]),
       lastFrame: path.join(folderPath, matchedFiles[matchedFiles.length - 1]),
+      gaps,
+      gapReport: formatGapReport(gaps),
     };
   } catch (err) {
     return { error: err.message };
@@ -312,7 +339,136 @@ ipcMain.handle('probe:audio', async (_, filePath) => {
   }
 });
 
-// ─── IPC: Encode ──────────────────────────────────────────────────────────────
+// ─── IPC: Pre-flight disk space check ─────────────────────────────────────────
+
+ipcMain.handle('preflight:disk-space', async (_, opts) => {
+  const { outputDir, resolutionLabel, frameRate, durationSeconds, isGPU } = opts;
+  const estimate = estimateOutputSize({ resolutionLabel, frameRate, durationSeconds, isGPU });
+  const recommended = recommendedFreeBytes(estimate.bytes);
+  const check = await checkOutputDiskSpace({
+    outputDir, estimatedBytes: estimate.bytes, recommendedBytes: recommended,
+  });
+  return { estimate, recommendedBytes: recommended, check };
+});
+
+// ─── IPC: Output verification ─────────────────────────────────────────────────
+
+ipcMain.handle('verify:output', async (_, opts) => {
+  if (!activeFFprobePath) return { error: 'FFprobe not available.' };
+  return probeAndVerify(activeFFprobePath, opts.outputPath, opts.expected);
+});
+
+// ─── IPC: Audio loudness analysis ─────────────────────────────────────────────
+
+ipcMain.handle('analyze:loudness', async (_, opts) => {
+  if (!activeFFmpegPath) return { error: 'FFmpeg not available.' };
+  const measurement = await analyzeLoudness(activeFFmpegPath, opts.audioPath);
+  const target = opts.targetLufs ?? -23.0;
+  return { measurement, classification: classifyLoudness(measurement, target) };
+});
+
+// ─── IPC: Zip delivery ────────────────────────────────────────────────────────
+
+ipcMain.handle('zip:delivery', async (_, deliveryFolder) => {
+  return zipDeliveryFolder(deliveryFolder);
+});
+
+// ─── IPC: Settings persistence ────────────────────────────────────────────────
+
+ipcMain.handle('settings:read', () => {
+  return settingsStore.readSettings(app.getPath('userData'));
+});
+
+ipcMain.handle('settings:update', (_, partial) => {
+  return settingsStore.updateSettings(app.getPath('userData'), partial);
+});
+
+ipcMain.handle('settings:recent-add', (_, entry) => {
+  return settingsStore.addRecentEncode(app.getPath('userData'), entry);
+});
+
+// ─── IPC: Native completion notification ──────────────────────────────────────
+
+ipcMain.handle('notify:encode-complete', (_, opts) => {
+  if (!Notification.isSupported()) return { ok: false };
+  const n = new Notification({
+    title: opts?.title || 'Encode complete',
+    body: opts?.body || 'Your delivery package is ready.',
+    silent: false,
+  });
+  n.on('click', () => {
+    if (mainWindow) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+    if (opts?.openPath) shell.openPath(opts.openPath);
+  });
+  n.show();
+  return { ok: true };
+});
+
+// ─── IPC: Test encode (5-second preview) ──────────────────────────────────────
+
+ipcMain.handle('encode:test', async (_, encodeParams) => {
+  if (!activeFFmpegPath) return { error: 'FFmpeg not available.' };
+  if (encodeProcess) return { error: 'An encode is already running.' };
+
+  const {
+    sourceType, sourcePath, ffmpegPattern,
+    frameRate, resolution, config,
+    sourceBitDepth, useGPU,
+  } = encodeParams;
+
+  const gpu = (useGPU !== false) && activeGPUEncoder;
+  const encodeFFmpeg = gpu ? gpu.ffmpegPath : activeFFmpegPath;
+
+  // Output to OS temp dir, opens with system video player
+  const tempOut = path.join(require('os').tmpdir(),
+    `dfw_test_${Date.now()}_${resolution.label}.mp4`);
+
+  // Build args, then PREPEND -frames:v limit to encode just 5 seconds worth
+  const sampleFrames = frameRate * 5;
+  const ffArgs = buildEncodeArgs({
+    sourceType, ffmpegPattern, sourcePath,
+    frameRate, resolution, outputVideoPath: tempOut,
+    config, gpu, sourceBitDepth,
+  });
+
+  // Insert -frames:v just before the output path (which is always last)
+  const argsWithLimit = [...ffArgs.slice(0, -1), '-frames:v', String(sampleFrames), tempOut];
+
+  console.log('[TestEncode] Running 5-second test encode to:', tempOut);
+
+  return new Promise(resolve => {
+    let stderr = '';
+    const startMs = Date.now();
+    const proc = spawn(encodeFFmpeg, argsWithLimit);
+    encodeProcess = proc;
+    proc.stderr.on('data', d => { stderr += d.toString(); });
+    proc.on('error', err => {
+      encodeProcess = null;
+      resolve({ error: err.message });
+    });
+    proc.on('close', code => {
+      encodeProcess = null;
+      if (code !== 0 || !fs.existsSync(tempOut)) {
+        return resolve({
+          error: `Test encode failed (exit ${code}). ` + (stderr.slice(-300)),
+        });
+      }
+      const durationMs = Date.now() - startMs;
+      const sizeBytes = fs.statSync(tempOut).size;
+      // Open with system player
+      shell.openPath(tempOut);
+      resolve({
+        ok: true, tempPath: tempOut, sizeBytes, durationMs,
+        framesEncoded: sampleFrames,
+      });
+    });
+  });
+});
+
+// ─── IPC: Encode (main) ───────────────────────────────────────────────────────
 
 ipcMain.handle('encode:start', async (_, encodeParams) => {
   if (!activeFFmpegPath) return { error: 'FFmpeg not available.' };
@@ -324,15 +480,14 @@ ipcMain.handle('encode:start', async (_, encodeParams) => {
     filmTitle, artistName, config,
     audioMode, audioFiles, audioInterleaved,
     muxAudio, sourceBitDepth, useGPU,
+    autoZip, notifyOnComplete, preventSleep,
   } = encodeParams;
 
-  // Pick encoder
   const gpu = (useGPU !== false) && activeGPUEncoder;
   const encodeFFmpeg = gpu ? gpu.ffmpegPath : activeFFmpegPath;
   const encoderName  = gpu ? gpu.name : 'libx265';
   const encoderLabel = gpu ? gpu.label : 'CPU libx265';
 
-  // Build folder structure
   const year = config.version;
   const safeName = sanitizeFilmTitle(filmTitle);
   const folderName = `${safeName}_DFW${year}`;
@@ -345,7 +500,6 @@ ipcMain.handle('encode:start', async (_, encodeParams) => {
   const outputFilename = `${safeName}_DFW${year}_${resolution.label}.mp4`;
   const outputVideoPath = path.join(videoFolder, outputFilename);
 
-  // Build ffmpeg args via pure function
   const ffArgs = buildEncodeArgs({
     sourceType, ffmpegPattern, sourcePath,
     frameRate, resolution, outputVideoPath,
@@ -360,12 +514,16 @@ ipcMain.handle('encode:start', async (_, encodeParams) => {
   mainWindow?.webContents.send('encode:encoder',
     { name: encoderName, label: encoderLabel, isGPU: !!gpu });
 
+  // Power save blocker if requested
+  if (preventSleep !== false) startPowerSaveBlocker();
+
   return new Promise(resolve => {
     let stderr = '';
     const totalFrames = encodeParams.totalFrames || null;
     const encodeStartMs = Date.now();
     let lastFrameSeen = 0;
     let lastFpsSeen = null;
+    let lastSizeCheckMs = 0;
 
     encodeProcess = spawn(encodeFFmpeg, ffArgs);
 
@@ -390,6 +548,18 @@ ipcMain.handle('encode:start', async (_, encodeParams) => {
           frameRate,
         });
 
+        // Live output file size (poll every 2 seconds to avoid stat thrashing)
+        let liveSizeBytes = null;
+        const now = Date.now();
+        if (now - lastSizeCheckMs > 2000) {
+          lastSizeCheckMs = now;
+          try {
+            if (fs.existsSync(outputVideoPath)) {
+              liveSizeBytes = fs.statSync(outputVideoPath).size;
+            }
+          } catch (_) {}
+        }
+
         mainWindow?.webContents.send('encode:progress', {
           frame: currentFrame,
           time: timeMatch ? timeMatch[1] : null,
@@ -397,7 +567,8 @@ ipcMain.handle('encode:start', async (_, encodeParams) => {
           fps: fps || null,
           totalFrames,
           etaSeconds,
-          elapsedMs: Date.now() - encodeStartMs,
+          elapsedMs: now - encodeStartMs,
+          liveSizeBytes,
         });
       }
       mainWindow?.webContents.send('encode:log', chunk);
@@ -405,12 +576,13 @@ ipcMain.handle('encode:start', async (_, encodeParams) => {
 
     encodeProcess.on('close', async code => {
       encodeProcess = null;
+      stopPowerSaveBlocker();
+
       if (code !== 0) {
         resolve({ error: `FFmpeg exited with code ${code}`, stderr });
         return;
       }
 
-      // Audio processing (stems / interleaved / mux)
       const audioResult = await processAudio({
         audioMode, audioFiles, audioInterleaved,
         audioFolder, filmTitle: safeName,
@@ -422,7 +594,33 @@ ipcMain.handle('encode:start', async (_, encodeParams) => {
       const videoStat = fs.existsSync(outputVideoPath) ? fs.statSync(outputVideoPath) : null;
       const videoMd5 = videoStat ? await computeMd5(outputVideoPath).catch(() => null) : null;
 
-      // x265 params for the report (CPU only)
+      // OUTPUT VERIFICATION (post-encode)
+      let verification = null;
+      try {
+        verification = await probeAndVerify(activeFFprobePath, outputVideoPath, {
+          codec: 'hevc',
+          pixFmt: 'yuv420p10le',
+          width: resolution.width,
+          height: resolution.height,
+          frameRate,
+          durationSeconds: encodeParams.sourceDuration,
+        });
+      } catch (_) {}
+
+      // AUDIO LOUDNESS ANALYSIS (on first stem, or muxed track)
+      let loudness = null;
+      if (audioResult.stems && audioResult.stems.length > 0) {
+        try {
+          const targetLufs = config.audio_target_lufs ?? -23.0;
+          // Analyze first stem (typically L) — sample, not full mix
+          const measurement = await analyzeLoudness(activeFFmpegPath, audioResult.stems[0].path);
+          loudness = {
+            measurement,
+            classification: classifyLoudness(measurement, targetLufs),
+          };
+        } catch (_) {}
+      }
+
       let x265ParamsForReport = null;
       if (!gpu) {
         x265ParamsForReport = config.video.x265_params;
@@ -432,8 +630,13 @@ ipcMain.handle('encode:start', async (_, encodeParams) => {
         }
       }
 
-      // Combined warnings from encode-time + audio processing
       const allWarnings = [...(encodeParams.warnings || []), ...audioResult.warnings];
+      if (loudness?.classification?.severity === 'warning' || loudness?.classification?.severity === 'error') {
+        allWarnings.push(loudness.classification.message);
+      }
+      if (verification && !verification.ok) {
+        allWarnings.push(verification.summary);
+      }
 
       const report = buildDeliveryReport({
         filmTitle, artistName, config,
@@ -456,16 +659,61 @@ ipcMain.handle('encode:start', async (_, encodeParams) => {
       const reportPath = path.join(deliveryFolder, 'delivery_report.txt');
       fs.writeFileSync(reportPath, report, 'utf8');
 
+      // AUTO-ZIP if requested
+      let zipResult = null;
+      if (autoZip) {
+        mainWindow?.webContents.send('encode:log', '\nCreating delivery ZIP…\n');
+        zipResult = await zipDeliveryFolder(deliveryFolder);
+        if (zipResult.error) {
+          allWarnings.push('ZIP creation failed: ' + zipResult.error);
+        }
+      }
+
+      // SAVE RECENT ENCODE
+      try {
+        settingsStore.addRecentEncode(app.getPath('userData'), {
+          filmTitle, artistName,
+          resolution: resolution.label,
+          frameRate,
+          encoder: encoderLabel,
+          sourceType,
+          deliveryFolder,
+          encodeDate: new Date().toISOString(),
+          durationMs: Date.now() - encodeStartMs,
+          fileSizeBytes: videoStat?.size || 0,
+        });
+      } catch (_) {}
+
+      // NATIVE NOTIFICATION
+      if (notifyOnComplete !== false && Notification.isSupported()) {
+        try {
+          const n = new Notification({
+            title: 'Encode complete',
+            body: `${filmTitle} (${resolution.label}, ${frameRate}fps) ready for delivery.`,
+            silent: false,
+          });
+          n.on('click', () => {
+            if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+            shell.openPath(deliveryFolder);
+          });
+          n.show();
+        } catch (_) {}
+      }
+
       resolve({
         success: true,
         deliveryFolder, reportPath, report,
         audioResult, videoMd5,
         videoSizeBytes: videoStat?.size || 0,
+        verification,
+        loudness,
+        zip: zipResult,
       });
     });
 
     encodeProcess.on('error', err => {
       encodeProcess = null;
+      stopPowerSaveBlocker();
       resolve({ error: err.message });
     });
   });
@@ -475,6 +723,7 @@ ipcMain.handle('encode:cancel', () => {
   if (encodeProcess) {
     encodeProcess.kill('SIGTERM');
     encodeProcess = null;
+    stopPowerSaveBlocker();
     return { canceled: true };
   }
   return { canceled: false };
@@ -492,5 +741,10 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
+  stopPowerSaveBlocker();
   if (!platform.isMac()) app.quit();
+});
+
+app.on('will-quit', () => {
+  stopPowerSaveBlocker();
 });

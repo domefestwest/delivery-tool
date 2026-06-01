@@ -27,14 +27,11 @@ export default function VideoFileTab({
   onFilePathChange, onDataChange, onFrameRateChange, onFrameRateWarning
 }) {
   const [probing, setProbing] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
 
   const allowedFps = config?.video?.allowed_framerates || [30, 60];
 
-  const handleSelectFile = async () => {
-    const file = await window.api.openFile({
-      title: 'Select Video File',
-      filters: [{ name: 'Video Files', extensions: ['mp4', 'mov'] }]
-    });
+  async function probeAndSet(file) {
     if (!file) return;
     onFilePathChange(file);
     onDataChange(null);
@@ -48,10 +45,8 @@ export default function VideoFileTab({
       onDataChange({ error: result.error });
       return;
     }
-
     onDataChange(result);
 
-    // Classify FPS
     const fpsClass = classifyFps(result.fps, allowedFps);
     if (fpsClass.status === 'ok') {
       onFrameRateChange(fpsClass.conformTo);
@@ -69,15 +64,70 @@ export default function VideoFileTab({
         message: `✕ Unsupported frame rate (${fpsClass.detected}fps). DFW only accepts 30fps or 60fps masters. Fulldome planetarium systems do not reliably play back at film-standard or PAL frame rates. Please re-export your master at exactly 30fps or 60fps.`
       });
     }
+  }
+
+  const handleSelectFile = async () => {
+    const file = await window.api.openFile({
+      title: 'Select Video File',
+      filters: [{ name: 'Video Files', extensions: ['mp4', 'mov'] }]
+    });
+    if (file) probeAndSet(file);
+  };
+
+  // Drag-and-drop handlers
+  const handleDragEnter = (e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); };
+  const handleDragLeave = (e) => { e.preventDefault(); e.stopPropagation(); setDragActive(false); };
+  const handleDragOver  = (e) => { e.preventDefault(); e.stopPropagation(); };
+  const handleDrop = async (e) => {
+    e.preventDefault(); e.stopPropagation();
+    setDragActive(false);
+    const files = Array.from(e.dataTransfer.files || []);
+    if (!files.length) return;
+    const f = files[0];
+    const fullPath = window.api.getPathForFile(f);
+    if (!fullPath) return;
+    if (!/\.(mp4|mov)$/i.test(fullPath)) {
+      onDataChange({ error: 'Please drop a .mp4 or .mov video file.' });
+      return;
+    }
+    probeAndSet(fullPath);
   };
 
   const fpsOk = frameRateWarning?.type !== 'unsupported' && frameRate;
 
   return (
-    <div>
-      {/* File picker */}
+    <div
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      style={{
+        position: 'relative',
+        border: dragActive ? '2px dashed #ED8B1E' : '2px dashed transparent',
+        borderRadius: 8,
+        padding: dragActive ? 16 : 0,
+        margin: dragActive ? -16 : 0,
+        background: dragActive ? 'rgba(237,139,30,0.05)' : 'transparent',
+        transition: 'all 0.15s',
+      }}
+    >
+      {dragActive && (
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(26,26,26,0.8)', borderRadius: 8,
+          color: '#ED8B1E', fontSize: 18, fontWeight: 700,
+          pointerEvents: 'none', zIndex: 10,
+        }}>
+          🎬 Drop .mp4 or .mov file to scan
+        </div>
+      )}
+
       <div style={{ marginBottom: 16 }}>
-        <label className="label">Video File (.mp4 or .mov)</label>
+        <label className="label">
+          Video File (.mp4 or .mov)
+          <span style={{ color: '#555', marginLeft: 6, fontSize: 11 }}>(or drag a file here)</span>
+        </label>
         <div className="path-picker">
           <div className={`path-display ${filePath ? 'has-value' : ''}`}>
             {filePath || 'No file selected'}

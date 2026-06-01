@@ -12,10 +12,18 @@
 const assert = require('assert');
 const path = require('path');
 
-const platform   = require('../src-main/platform');
-const utils      = require('../src-main/utils');
-const gpu        = require('../src-main/gpu-detection');
-const encodeArgs = require('../src-main/encode-args');
+const platform        = require('../src-main/platform');
+const utils           = require('../src-main/utils');
+const gpu             = require('../src-main/gpu-detection');
+const encodeArgs      = require('../src-main/encode-args');
+const gapDetector     = require('../src-main/gap-detector');
+const outputEstimate  = require('../src-main/output-estimate');
+const outputVerify    = require('../src-main/output-verification');
+const loudness        = require('../src-main/loudness');
+const settingsStore   = require('../src-main/settings-store');
+const os              = require('os');
+const fs              = require('fs');
+const tmpPath         = require('path');
 
 const PLATFORMS = ['darwin', 'win32', 'linux'];
 
@@ -572,6 +580,253 @@ test('Every GPU encoder uses 10-bit pix_fmt and main10 profile', () => {
     }
   }
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// PNG GAP DETECTOR
+// ════════════════════════════════════════════════════════════════════════════
+section('PNG sequence gap detection');
+
+test('No gaps in complete sequence', () => {
+  const files = Array.from({length: 10}, (_, i) =>
+    `render_${String(i+1).padStart(4,'0')}.png`);
+  const g = gapDetector.detectGaps(files);
+  assert.strictEqual(g.hasGaps, false);
+  assert.strictEqual(g.actualCount, 10);
+  assert.strictEqual(g.expectedCount, 10);
+});
+
+test('Single missing frame detected', () => {
+  const files = ['render_0001.png','render_0002.png','render_0004.png','render_0005.png'];
+  const g = gapDetector.detectGaps(files);
+  assert.strictEqual(g.hasGaps, true);
+  assert.strictEqual(g.missingTotal, 1);
+  assert.deepStrictEqual(g.missing, [3]);
+  assert.deepStrictEqual(g.ranges, [[3, 3]]);
+});
+
+test('Multi-range gap detected', () => {
+  const files = ['render_0001.png','render_0002.png','render_0006.png','render_0010.png','render_0011.png'];
+  const g = gapDetector.detectGaps(files);
+  assert.strictEqual(g.hasGaps, true);
+  assert.strictEqual(g.missingTotal, 6); // 3,4,5,7,8,9
+  assert.deepStrictEqual(g.ranges, [[3, 5], [7, 9]]);
+});
+
+test('Format gap report human-readable', () => {
+  const g = gapDetector.detectGaps(['frame_0001.png','frame_0003.png']);
+  const report = gapDetector.formatGapReport(g);
+  assert.ok(report.includes('1 missing'));
+  assert.ok(report.includes('2'));
+});
+
+test('Empty files array returns no gaps', () => {
+  const g = gapDetector.detectGaps([]);
+  assert.strictEqual(g.hasGaps, false);
+  assert.strictEqual(g.firstFrame, null);
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// OUTPUT SIZE ESTIMATE
+// ════════════════════════════════════════════════════════════════════════════
+section('Output size estimation');
+
+test('4K 30fps 60s estimate is in MB range', () => {
+  const e = outputEstimate.estimateOutputSize({
+    resolutionLabel: '4K', frameRate: 30, durationSeconds: 60,
+  });
+  // 25 Mbps * 60s = 1500 Mbits = 187.5 MB
+  assert.ok(e.bytes > 100_000_000, `Expected >100MB, got ${e.bytes}`);
+  assert.ok(e.bytes < 300_000_000, `Expected <300MB, got ${e.bytes}`);
+});
+
+test('8K 60fps 600s estimate is in GB range', () => {
+  const e = outputEstimate.estimateOutputSize({
+    resolutionLabel: '8K', frameRate: 60, durationSeconds: 600,
+  });
+  // 165 Mbps * 600s = 99000 Mbits = ~12.4 GB
+  assert.ok(e.bytes > 10 * 1024 ** 3, `Expected >10GB, got ${e.bytes}`);
+  assert.ok(e.bytes < 20 * 1024 ** 3, `Expected <20GB, got ${e.bytes}`);
+});
+
+test('GPU encoder inflates estimate', () => {
+  const cpu = outputEstimate.estimateOutputSize({
+    resolutionLabel: '4K', frameRate: 30, durationSeconds: 60, isGPU: false,
+  });
+  const gpu = outputEstimate.estimateOutputSize({
+    resolutionLabel: '4K', frameRate: 30, durationSeconds: 60, isGPU: true,
+  });
+  assert.ok(gpu.bytes > cpu.bytes, 'GPU should estimate larger files');
+  assert.ok(gpu.bytes > cpu.bytes * 1.3, 'GPU inflation should be ~1.4x');
+});
+
+test('Unknown combo returns null', () => {
+  const e = outputEstimate.estimateOutputSize({
+    resolutionLabel: '12K', frameRate: 30, durationSeconds: 60,
+  });
+  assert.strictEqual(e.bytes, null);
+});
+
+test('Recommended free space is 2x estimate', () => {
+  assert.strictEqual(outputEstimate.recommendedFreeBytes(1000), 2000);
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// OUTPUT VERIFICATION (pure compare function)
+// ════════════════════════════════════════════════════════════════════════════
+section('Output verification');
+
+test('Correct output passes verification', () => {
+  const r = outputVerify.verifyOutput(
+    { codec: 'hevc', pixFmt: 'yuv420p10le', width: 4096, height: 4096, fps: 30, duration: 60 },
+    { codec: 'hevc', pixFmt: 'yuv420p10le', width: 4096, height: 4096, frameRate: 30, durationSeconds: 60 }
+  );
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.issues.length, 0);
+});
+
+test('Wrong codec is flagged as error', () => {
+  const r = outputVerify.verifyOutput(
+    { codec: 'h264', pixFmt: 'yuv420p10le', width: 4096, height: 4096, fps: 30 },
+    { codec: 'hevc', pixFmt: 'yuv420p10le', width: 4096, height: 4096, frameRate: 30 }
+  );
+  assert.strictEqual(r.ok, false);
+  assert.ok(r.issues.some(i => i.field === 'codec' && i.severity === 'error'));
+});
+
+test('8-bit pixel format is flagged as error (banding risk)', () => {
+  const r = outputVerify.verifyOutput(
+    { codec: 'hevc', pixFmt: 'yuv420p', width: 4096, height: 4096, fps: 30 },
+    { codec: 'hevc', pixFmt: 'yuv420p10le', width: 4096, height: 4096, frameRate: 30 }
+  );
+  assert.strictEqual(r.ok, false);
+  assert.ok(r.issues.some(i => i.field === 'pix_fmt' && i.severity === 'error'));
+});
+
+test('Resolution mismatch is an error', () => {
+  const r = outputVerify.verifyOutput(
+    { codec: 'hevc', pixFmt: 'yuv420p10le', width: 3840, height: 4096, fps: 30 },
+    { codec: 'hevc', pixFmt: 'yuv420p10le', width: 4096, height: 4096, frameRate: 30 }
+  );
+  assert.strictEqual(r.ok, false);
+  assert.ok(r.issues.some(i => i.field === 'resolution'));
+});
+
+test('FPS mismatch is an error', () => {
+  const r = outputVerify.verifyOutput(
+    { codec: 'hevc', pixFmt: 'yuv420p10le', width: 4096, height: 4096, fps: 29.97 },
+    { codec: 'hevc', pixFmt: 'yuv420p10le', width: 4096, height: 4096, frameRate: 30 }
+  );
+  assert.strictEqual(r.ok, false);
+  assert.ok(r.issues.some(i => i.field === 'fps'));
+});
+
+test('Probe failure is reported', () => {
+  const r = outputVerify.verifyOutput(null,
+    { codec: 'hevc', pixFmt: 'yuv420p10le', width: 4096, height: 4096, frameRate: 30 }
+  );
+  assert.strictEqual(r.ok, false);
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// LOUDNESS CLASSIFICATION
+// ════════════════════════════════════════════════════════════════════════════
+section('Audio loudness classification');
+
+test('On-target loudness (-23 LUFS) is OK', () => {
+  const c = loudness.classifyLoudness({ integratedLufs: -23.0, truePeakDbtp: -2.0 });
+  assert.strictEqual(c.severity, 'ok');
+});
+
+test('Within 2 LU of target is OK', () => {
+  const c = loudness.classifyLoudness({ integratedLufs: -21.0, truePeakDbtp: -2.0 });
+  assert.strictEqual(c.severity, 'ok');
+});
+
+test('3 LU off target is warning', () => {
+  const c = loudness.classifyLoudness({ integratedLufs: -26.0, truePeakDbtp: -3.0 });
+  assert.strictEqual(c.severity, 'warning');
+});
+
+test('5+ LU off target is error', () => {
+  const c = loudness.classifyLoudness({ integratedLufs: -29.0, truePeakDbtp: -3.0 });
+  assert.strictEqual(c.severity, 'error');
+});
+
+test('True peak clipping (>-1 dBTP) is error regardless of LUFS', () => {
+  const c = loudness.classifyLoudness({ integratedLufs: -23.0, truePeakDbtp: 0.0 });
+  assert.strictEqual(c.severity, 'error');
+  assert.ok(c.message.includes('clipping'));
+});
+
+test('Missing measurement is unknown', () => {
+  const c = loudness.classifyLoudness(null);
+  assert.strictEqual(c.severity, 'unknown');
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// SETTINGS STORE (uses real temp dir, isolated per run)
+// ════════════════════════════════════════════════════════════════════════════
+section('Settings persistence');
+
+const testUserDir = tmpPath.join(os.tmpdir(), 'dfw-settings-test-' + process.pid);
+fs.mkdirSync(testUserDir, { recursive: true });
+
+test('Read returns defaults when no file exists', () => {
+  // Use a fresh subdir to ensure clean state
+  const fresh = tmpPath.join(testUserDir, 'fresh-' + Date.now());
+  fs.mkdirSync(fresh, { recursive: true });
+  const s = settingsStore.readSettings(fresh);
+  assert.strictEqual(s.artistName, '');
+  assert.strictEqual(s.preferGPU, true);
+  assert.deepStrictEqual(s.recentEncodes, []);
+});
+
+test('Update settings persists across reads', () => {
+  const dir = tmpPath.join(testUserDir, 'update-' + Date.now());
+  fs.mkdirSync(dir, { recursive: true });
+  settingsStore.updateSettings(dir, { artistName: 'Test Artist', preferGPU: false });
+  const s = settingsStore.readSettings(dir);
+  assert.strictEqual(s.artistName, 'Test Artist');
+  assert.strictEqual(s.preferGPU, false);
+  // Other defaults preserved
+  assert.strictEqual(s.notifyOnComplete, true);
+});
+
+test('Recent encodes: newest first, capped at MAX', () => {
+  const dir = tmpPath.join(testUserDir, 'recent-' + Date.now());
+  fs.mkdirSync(dir, { recursive: true });
+  // Add 12 encodes (more than RECENT_MAX=10)
+  for (let i = 0; i < 12; i++) {
+    settingsStore.addRecentEncode(dir, {
+      filmTitle: `Film ${i}`,
+      deliveryFolder: `/path/${i}`,
+      resolution: '4K', frameRate: 30,
+      encoder: 'CPU', sourceType: 'video',
+    });
+  }
+  const s = settingsStore.readSettings(dir);
+  assert.strictEqual(s.recentEncodes.length, 10);
+  assert.strictEqual(s.recentEncodes[0].filmTitle, 'Film 11'); // newest first
+});
+
+test('Recent encodes: dedupes by delivery folder', () => {
+  const dir = tmpPath.join(testUserDir, 'dedupe-' + Date.now());
+  fs.mkdirSync(dir, { recursive: true });
+  settingsStore.addRecentEncode(dir, {
+    filmTitle: 'A', deliveryFolder: '/same/path',
+    resolution: '4K', frameRate: 30,
+  });
+  settingsStore.addRecentEncode(dir, {
+    filmTitle: 'B', deliveryFolder: '/same/path',  // re-encode
+    resolution: '4K', frameRate: 30,
+  });
+  const s = settingsStore.readSettings(dir);
+  assert.strictEqual(s.recentEncodes.length, 1);
+  assert.strictEqual(s.recentEncodes[0].filmTitle, 'B'); // newest version wins
+});
+
+// Clean up
+try { fs.rmSync(testUserDir, { recursive: true, force: true }); } catch (_) {}
 
 // ════════════════════════════════════════════════════════════════════════════
 // SUMMARY
