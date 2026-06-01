@@ -55,6 +55,15 @@ contextBridge.exposeInMainWorld('api', {
   saveProject:     (state) => ipcRenderer.invoke('project:save', state),
   openProject:     ()      => ipcRenderer.invoke('project:open'),
 
+  // Update checker
+  checkForUpdate:  ()    => ipcRenderer.invoke('update:check-now'),
+  getUpdateStatus: ()    => ipcRenderer.invoke('update:get-status'),
+  onUpdateStatus:  (cb) => {
+    const listener = (_, data) => cb(data);
+    ipcRenderer.on('update:status', listener);
+    return () => ipcRenderer.removeListener('update:status', listener);
+  },
+
   // Encode
   startEncode:    (params) => ipcRenderer.invoke('encode:start', params),
   cancelEncode:   ()       => ipcRenderer.invoke('encode:cancel'),

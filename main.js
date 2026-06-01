@@ -24,6 +24,7 @@ const { analyzeLoudness, classifyLoudness, analyzeMix } = require('./src-main/lo
 const { zipDeliveryFolder }   = require('./src-main/zip-package');
 const { generateThumbnail, cleanupOldThumbnails } = require('./src-main/preview-generator');
 const { saveProject, loadProject } = require('./src-main/project-io');
+const { checkForUpdate, schedulePeriodicCheck } = require('./src-main/update-checker');
 const settingsStore           = require('./src-main/settings-store');
 const {
   computeMd5,
@@ -62,6 +63,8 @@ let activeConfig = null;
 let activeGPUEncoder = null;
 let encodeProcess = null;
 let powerSaveBlockerId = null;
+let stopUpdateCheck = null;
+let latestUpdateState = null;  // last result from the checker
 
 function applyDepResult(result) {
   if (result.found && result.has10BitX265) {
@@ -457,6 +460,16 @@ ipcMain.handle('settings:update', (_, partial) => {
 ipcMain.handle('settings:recent-add', (_, entry) => {
   return settingsStore.addRecentEncode(app.getPath('userData'), entry);
 });
+
+// ─── IPC: Update checker ──────────────────────────────────────────────────────
+
+ipcMain.handle('update:check-now', async () => {
+  const result = await checkForUpdate(getAppVersion());
+  latestUpdateState = result;
+  return result;
+});
+
+ipcMain.handle('update:get-status', () => latestUpdateState);
 
 // ─── IPC: Project save/load (.dfwproj files) ──────────────────────────────────
 
@@ -906,6 +919,17 @@ app.whenReady().then(async () => {
   activeConfig = loadDefaultConfig();
   createWindow();
 
+  // Start background update checking — first probe after 2s, then every 6h
+  stopUpdateCheck = schedulePeriodicCheck(getAppVersion(), result => {
+    latestUpdateState = result;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update:status', result);
+      if (result.hasUpdate) {
+        console.log(`[Updates] New version available: ${result.latest} (current ${result.current})`);
+      }
+    }
+  });
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -918,6 +942,6 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   stopPowerSaveBlocker();
-  // Best-effort cleanup of old preview thumbnails
+  if (stopUpdateCheck) { try { stopUpdateCheck(); } catch (_) {} }
   try { cleanupOldThumbnails(); } catch (_) {}
 });

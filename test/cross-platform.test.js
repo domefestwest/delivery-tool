@@ -21,6 +21,7 @@ const outputEstimate  = require('../src-main/output-estimate');
 const outputVerify    = require('../src-main/output-verification');
 const loudness        = require('../src-main/loudness');
 const settingsStore   = require('../src-main/settings-store');
+const updateChecker   = require('../src-main/update-checker');
 const os              = require('os');
 const fs              = require('fs');
 const tmpPath         = require('path');
@@ -827,6 +828,24 @@ test('Recent encodes: dedupes by delivery folder', () => {
 
 // Clean up
 try { fs.rmSync(testUserDir, { recursive: true, force: true }); } catch (_) {}
+
+// ════════════════════════════════════════════════════════════════════════════
+// UPDATE CHECKER — VERSION COMPARISON
+// ════════════════════════════════════════════════════════════════════════════
+section('Update-checker version comparison');
+
+test('Equal versions compare to 0',         () => assert.strictEqual(updateChecker.compareVersions('0.16.0', '0.16.0'), 0));
+test('Equal w/ v-prefix on one',            () => assert.strictEqual(updateChecker.compareVersions('v0.16.0', '0.16.0'), 0));
+test('0.15.12 < 0.16.0',                    () => assert.strictEqual(updateChecker.compareVersions('0.15.12', '0.16.0'), -1));
+test('0.16.0 > 0.15.12',                    () => assert.strictEqual(updateChecker.compareVersions('0.16.0', '0.15.12'), 1));
+test('0.16.1 > 0.16.0',                     () => assert.strictEqual(updateChecker.compareVersions('0.16.1', '0.16.0'), 1));
+test('Major dominates: 1.0.0 > 0.99.99',    () => assert.strictEqual(updateChecker.compareVersions('1.0.0', '0.99.99'), 1));
+test('Patch-level: 0.16.10 > 0.16.9',       () => assert.strictEqual(updateChecker.compareVersions('0.16.10', '0.16.9'), 1));
+test('Pre-release lower than release',      () => assert.strictEqual(updateChecker.compareVersions('1.0.0-beta', '1.0.0'), -1));
+test('Pre-release higher than release reverses', () => assert.strictEqual(updateChecker.compareVersions('1.0.0', '1.0.0-beta'), 1));
+test('Missing trailing segments',           () => assert.strictEqual(updateChecker.compareVersions('1.0', '1.0.0'), 0));
+test('Missing trailing → lower',            () => assert.strictEqual(updateChecker.compareVersions('1.0', '1.0.1'), -1));
+test('Null/empty string treated as 0.0.0',  () => assert.strictEqual(updateChecker.compareVersions('', '0.0.1'), -1));
 
 // ════════════════════════════════════════════════════════════════════════════
 // SUMMARY

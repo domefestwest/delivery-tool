@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 function deadlineState(deadlineISO) {
   if (!deadlineISO) return null;
@@ -13,6 +13,15 @@ function deadlineState(deadlineISO) {
 export default function FestivalHeader({ config, depStatus, onLoadConfig }) {
   const [showCapModal, setShowCapModal] = useState(false);
   const [loadError, setLoadError] = useState(null);
+  const [updateStatus, setUpdateStatus] = useState(null);
+
+  // Subscribe to update events from main process
+  useEffect(() => {
+    // Fetch any cached status (in case the background check already fired)
+    window.api.getUpdateStatus().then(s => { if (s) setUpdateStatus(s); });
+    const unsub = window.api.onUpdateStatus(s => setUpdateStatus(s));
+    return () => unsub();
+  }, []);
 
   const festivalName = config
     ? `${config.festival_name} ${config.version}`
@@ -95,35 +104,69 @@ export default function FestivalHeader({ config, depStatus, onLoadConfig }) {
           )}
         </div>
 
-        {/* Right: FFmpeg status */}
-        <button
-          onClick={() => setShowCapModal(true)}
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 7,
-            padding: '4px 8px',
-            borderRadius: 5,
-          }}
-          title="Click to see FFmpeg details"
-        >
-          <span style={{
-            background: depStatus?.has10BitX265 ? '#4caf6e' : '#e05252',
-            borderRadius: '50%',
-            boxShadow: `0 0 6px ${depStatus?.has10BitX265 ? '#4caf6e' : '#e05252'}`,
-            display: 'inline-block',
-            height: 8,
-            width: 8
-          }} />
-          <span style={{ color: '#888', fontSize: 12 }}>
-            {depStatus?.has10BitX265
-              ? `FFmpeg ${depStatus.version} ready`
-              : 'FFmpeg unavailable'}
-          </span>
-        </button>
+        {/* Right cluster: update badge + FFmpeg status */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {updateStatus?.hasUpdate && (
+            <a
+              href={updateStatus.release?.htmlUrl || '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={async (e) => {
+                e.preventDefault();
+                if (updateStatus.release?.htmlUrl) {
+                  await window.api.openPath(updateStatus.release.htmlUrl);
+                }
+              }}
+              title={`Click to view release notes — published ${
+                updateStatus.release?.publishedAt
+                  ? new Date(updateStatus.release.publishedAt).toLocaleDateString()
+                  : 'recently'
+              }`}
+              style={{
+                background: 'rgba(237,139,30,0.18)',
+                border: '1px solid rgba(237,139,30,0.45)',
+                borderRadius: 5,
+                color: '#ED8B1E',
+                fontSize: 11,
+                fontWeight: 700,
+                padding: '4px 9px',
+                textDecoration: 'none',
+                letterSpacing: '0.04em',
+              }}
+            >
+              ⬆ Update available — {updateStatus.latest}
+            </a>
+          )}
+
+          <button
+            onClick={() => setShowCapModal(true)}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 7,
+              padding: '4px 8px',
+              borderRadius: 5,
+            }}
+            title="Click to see FFmpeg details"
+          >
+            <span style={{
+              background: depStatus?.has10BitX265 ? '#4caf6e' : '#e05252',
+              borderRadius: '50%',
+              boxShadow: `0 0 6px ${depStatus?.has10BitX265 ? '#4caf6e' : '#e05252'}`,
+              display: 'inline-block',
+              height: 8,
+              width: 8
+            }} />
+            <span style={{ color: '#888', fontSize: 12 }}>
+              {depStatus?.has10BitX265
+                ? `FFmpeg ${depStatus.version} ready`
+                : 'FFmpeg unavailable'}
+            </span>
+          </button>
+        </div>
       </header>
 
       {/* Capability detail modal */}
