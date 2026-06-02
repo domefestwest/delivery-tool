@@ -22,6 +22,7 @@ const outputVerify    = require('../src-main/output-verification');
 const loudness        = require('../src-main/loudness');
 const settingsStore   = require('../src-main/settings-store');
 const updateChecker   = require('../src-main/update-checker');
+const resolutionRules = require('../src-main/resolution-rules');
 const os              = require('os');
 const fs              = require('fs');
 const tmpPath         = require('path');
@@ -846,6 +847,129 @@ test('Pre-release higher than release reverses', () => assert.strictEqual(update
 test('Missing trailing segments',           () => assert.strictEqual(updateChecker.compareVersions('1.0', '1.0.0'), 0));
 test('Missing trailing → lower',            () => assert.strictEqual(updateChecker.compareVersions('1.0', '1.0.1'), -1));
 test('Null/empty string treated as 0.0.0',  () => assert.strictEqual(updateChecker.compareVersions('', '0.0.1'), -1));
+
+// ════════════════════════════════════════════════════════════════════════════
+// RESOLUTION GOVERNANCE — no upscaling allowed
+// ════════════════════════════════════════════════════════════════════════════
+section('Resolution rules — no upscaling');
+
+const ALLOWED_4K_6K_8K = [
+  { label: '4K', width: 4096, height: 4096 },
+  { label: '6K', width: 6144, height: 6144 },
+  { label: '8K', width: 8192, height: 8192 },
+];
+
+test('2K source — no allowed master resolutions',  () => {
+  const r = resolutionRules.filterAllowedResolutions(2048, 2048, ALLOWED_4K_6K_8K);
+  assert.deepStrictEqual(r, []);
+});
+
+test('4K source — only 4K allowed',  () => {
+  const r = resolutionRules.filterAllowedResolutions(4096, 4096, ALLOWED_4K_6K_8K);
+  assert.strictEqual(r.length, 1);
+  assert.strictEqual(r[0].label, '4K');
+});
+
+test('5K source — 4K only (round down — never upscale to 6K)',  () => {
+  const r = resolutionRules.filterAllowedResolutions(5120, 5120, ALLOWED_4K_6K_8K);
+  assert.strictEqual(r.length, 1);
+  assert.strictEqual(r[0].label, '4K');
+});
+
+test('6K source — 4K and 6K',  () => {
+  const r = resolutionRules.filterAllowedResolutions(6144, 6144, ALLOWED_4K_6K_8K);
+  assert.deepStrictEqual(r.map(x => x.label), ['4K', '6K']);
+});
+
+test('8K source — all three allowed',  () => {
+  const r = resolutionRules.filterAllowedResolutions(8192, 8192, ALLOWED_4K_6K_8K);
+  assert.deepStrictEqual(r.map(x => x.label), ['4K', '6K', '8K']);
+});
+
+test('12K source — all three still allowed (no upper bound)',  () => {
+  const r = resolutionRules.filterAllowedResolutions(12288, 12288, ALLOWED_4K_6K_8K);
+  assert.deepStrictEqual(r.map(x => x.label), ['4K', '6K', '8K']);
+});
+
+test('Non-square source where height limits choices',  () => {
+  // 8K wide but only 4K tall — still need both dims to fit
+  const r = resolutionRules.filterAllowedResolutions(8192, 4096, ALLOWED_4K_6K_8K);
+  assert.strictEqual(r.length, 1);
+  assert.strictEqual(r[0].label, '4K');
+});
+
+test('Source dimensions unknown returns full list (no clamp)',  () => {
+  const r = resolutionRules.filterAllowedResolutions(null, null, ALLOWED_4K_6K_8K);
+  assert.deepStrictEqual(r, ALLOWED_4K_6K_8K);
+});
+
+test('describeSourceBracket buckets correctly', () => {
+  assert.strictEqual(resolutionRules.describeSourceBracket(1024),  'sub-2K');
+  assert.strictEqual(resolutionRules.describeSourceBracket(2048),  '2K');
+  assert.strictEqual(resolutionRules.describeSourceBracket(3000),  '2K');
+  assert.strictEqual(resolutionRules.describeSourceBracket(4096),  '4K');
+  assert.strictEqual(resolutionRules.describeSourceBracket(5120),  '4K');
+  assert.strictEqual(resolutionRules.describeSourceBracket(6144),  '6K');
+  assert.strictEqual(resolutionRules.describeSourceBracket(8192),  '8K');
+  assert.strictEqual(resolutionRules.describeSourceBracket(0),     'unknown');
+});
+
+test('Screener eligibility — source ≤ max threshold', () => {
+  const screener = { enabled: true, max_source_label: '4K' };
+  assert.strictEqual(resolutionRules.isScreenerEligible(2048, screener), true);
+  assert.strictEqual(resolutionRules.isScreenerEligible(4096, screener), true);
+  assert.strictEqual(resolutionRules.isScreenerEligible(6144, screener), false);
+  assert.strictEqual(resolutionRules.isScreenerEligible(8192, screener), false);
+});
+
+test('Screener disabled — never eligible', () => {
+  const screener = { enabled: false, max_source_label: '4K' };
+  assert.strictEqual(resolutionRules.isScreenerEligible(2048, screener), false);
+});
+
+test('diagnoseSource: 2K source + DFW config → screener-only', () => {
+  const config = {
+    video: { allowed_resolutions: ALLOWED_4K_6K_8K },
+    screener: { enabled: true, max_source_label: '4K' },
+  };
+  const r = resolutionRules.diagnoseSource(2048, 2048, config);
+  assert.strictEqual(r.masterModeAvailable, false);
+  assert.strictEqual(r.screenerModeAvailable, true);
+  assert.strictEqual(r.recommendation, 'screener');
+});
+
+test('diagnoseSource: 8K source + DFW config → master-only', () => {
+  const config = {
+    video: { allowed_resolutions: ALLOWED_4K_6K_8K },
+    screener: { enabled: true, max_source_label: '4K' },
+  };
+  const r = resolutionRules.diagnoseSource(8192, 8192, config);
+  assert.strictEqual(r.masterModeAvailable, true);
+  assert.strictEqual(r.screenerModeAvailable, false);
+  assert.strictEqual(r.recommendation, 'master');
+  assert.strictEqual(r.allowedMasterResolutions.length, 3);
+});
+
+test('diagnoseSource: 4K source + DFW config → either available', () => {
+  const config = {
+    video: { allowed_resolutions: ALLOWED_4K_6K_8K },
+    screener: { enabled: true, max_source_label: '4K' },
+  };
+  const r = resolutionRules.diagnoseSource(4096, 4096, config);
+  assert.strictEqual(r.masterModeAvailable, true);
+  assert.strictEqual(r.screenerModeAvailable, true);
+  assert.strictEqual(r.recommendation, 'either');
+});
+
+test('diagnoseSource: 1080p source + strict-8K-only festival → neither', () => {
+  const config = {
+    video: { allowed_resolutions: [{ label: '8K', width: 8192, height: 8192 }] },
+    screener: { enabled: false },
+  };
+  const r = resolutionRules.diagnoseSource(1920, 1080, config);
+  assert.strictEqual(r.recommendation, 'neither');
+  assert.ok(r.advisory.includes('1920×1080'));
+});
 
 // ════════════════════════════════════════════════════════════════════════════
 // SUMMARY

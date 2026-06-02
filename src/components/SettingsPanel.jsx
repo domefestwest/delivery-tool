@@ -41,6 +41,7 @@ export default function SettingsPanel({
   onSaveProject, onOpenProject,
   // output
   selectedResolutions, onSelectedResolutionsChange,
+  sourceWidth, sourceHeight,
   outputDir, onOutputDirChange,
   // audio
   audioMode, onAudioModeChange,
@@ -178,30 +179,53 @@ export default function SettingsPanel({
         >
           OUTPUT
         </SectionLabel>
+
+        {/* Source-too-small warning: no resolution from this festival fits */}
+        {sourceWidth && sourceHeight && resolutions.length > 0 &&
+         resolutions.every(r => r.width > sourceWidth || r.height > sourceHeight) && (
+          <div className="inline-warn warn-error" style={{ marginBottom: 10, fontSize: 12 }}>
+            ⚠ Source is {sourceWidth}×{sourceHeight} — too small for any of this festival's
+            accepted resolutions ({resolutions.map(r => r.label).join(', ')}).
+            {config?.screener?.enabled && (
+              <> Consider Screener mode for jury-review files.</>
+            )}
+          </div>
+        )}
+
         <div className="settings-row" style={{ marginBottom: 8 }}>
           <div style={{ flex: 1 }}>
             <div className="segment-control compact">
               {resolutions.map(res => {
                 const isSelected = selectedResolutions?.some(r => r.label === res.label);
+                const wouldUpscale = sourceWidth && sourceHeight &&
+                  (res.width > sourceWidth || res.height > sourceHeight);
                 return (
                   <button
                     key={res.label}
                     className={`segment-btn ${isSelected ? 'active' : ''}`}
+                    disabled={wouldUpscale}
                     onClick={() => {
+                      if (wouldUpscale) return;
                       const current = selectedResolutions || [];
                       if (isSelected) {
-                        // Don't allow deselecting if it's the only one — must always have ≥1
                         if (current.length > 1) {
                           onSelectedResolutionsChange(current.filter(r => r.label !== res.label));
                         }
                       } else {
-                        // Add — preserve config order
-                        const next = resolutions.filter(r =>
-                          r.label === res.label || current.some(c => c.label === r.label));
+                        const next = resolutions
+                          .filter(r => !(sourceWidth && (r.width > sourceWidth || r.height > sourceHeight)))
+                          .filter(r => r.label === res.label || current.some(c => c.label === r.label));
                         onSelectedResolutionsChange(next);
                       }
                     }}
-                    title={`${res.width}×${res.height} — click to ${isSelected ? 'remove' : 'add'} to batch`}
+                    style={wouldUpscale ? {
+                      opacity: 0.35, cursor: 'not-allowed', textDecoration: 'line-through',
+                    } : {}}
+                    title={
+                      wouldUpscale
+                        ? `${res.width}×${res.height} — would require upscaling from ${sourceWidth}×${sourceHeight} source`
+                        : `${res.width}×${res.height} — click to ${isSelected ? 'remove' : 'add'} to batch`
+                    }
                   >
                     {res.label}
                   </button>
@@ -210,6 +234,19 @@ export default function SettingsPanel({
             </div>
           </div>
         </div>
+
+        {/* Explanation when some resolutions are disabled */}
+        {sourceWidth && sourceHeight && resolutions.some(r =>
+          r.width > sourceWidth || r.height > sourceHeight
+        ) && resolutions.some(r =>
+          r.width <= sourceWidth && r.height <= sourceHeight
+        ) && (
+          <div className="muted small" style={{ marginBottom: 8, fontSize: 11 }}>
+            ℹ Higher resolutions disabled — source is {sourceWidth}×{sourceHeight},
+            this tool never upscales.
+          </div>
+        )}
+
         {selectedResolutions?.length > 1 && (
           <div className="muted small" style={{ marginBottom: 8 }}>
             Will encode {selectedResolutions.map(r => r.label).join(' → ')} in sequence.

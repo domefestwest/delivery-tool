@@ -251,26 +251,27 @@ ipcMain.handle('scan:png-sequence', async (_, folderPath) => {
     }
     const [patternStr, matchedFiles] = best;
 
-    // Bit depth from first frame
+    // Bit depth + dimensions from first frame
     let bitDepth = null;
+    let width = null;
+    let height = null;
     if (activeFFprobePath) {
       try {
         const firstFrame = path.join(folderPath, matchedFiles[0]);
         const probe = await runWithTimeout(activeFFprobePath, [
           '-v', 'error', '-select_streams', 'v:0',
-          '-show_entries', 'stream=bits_per_raw_sample,pix_fmt',
+          '-show_entries', 'stream=bits_per_raw_sample,pix_fmt,width,height',
           '-of', 'json', firstFrame,
         ]);
         const stream = JSON.parse(probe.stdout || '{}')?.streams?.[0];
         if (stream) {
+          width = stream.width || null;
+          height = stream.height || null;
           const bprs = parseInt(stream.bits_per_raw_sample, 10);
           const pf = stream.pix_fmt || '';
-          // EXR is typically half-float (16-bit) or full-float (32-bit).
-          // gbrpf32le, gbrp16le, gbrap16le etc. all indicate high bit depth.
           if (ext === 'exr') {
-            // Almost all EXRs are >= 16-bit float; treat as 16-bit equivalent
             bitDepth = 16;
-            if (/f32|f64|float/.test(pf)) bitDepth = 16; // float still maps to 16-bit for our tagging logic
+            if (/f32|f64|float/.test(pf)) bitDepth = 16;
           } else if (bprs === 16 || /16|48|64/.test(pf)) {
             bitDepth = 16;
           } else if (bprs === 8 || /^(rgb24|rgba|gray|pal8)$/.test(pf)) {
@@ -293,6 +294,8 @@ ipcMain.handle('scan:png-sequence', async (_, folderPath) => {
       ffmpegPattern,
       frameCount: matchedFiles.length,
       bitDepth,
+      width,
+      height,
       sourceExt: ext,  // 'png' or 'exr' — for UI labels
       firstFrame: path.join(folderPath, matchedFiles[0]),
       lastFrame: path.join(folderPath, matchedFiles[matchedFiles.length - 1]),

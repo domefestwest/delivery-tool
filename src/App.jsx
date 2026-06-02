@@ -200,6 +200,32 @@ export default function App() {
 
   const effectiveFps = sourceType === 'png' ? pngFrameRate : videoFrameRate;
   const effectiveSource = sourceType === 'png' ? pngData : videoData;
+
+  // Source dimensions — used for resolution governance (no upscaling allowed)
+  const sourceWidth  = sourceType === 'png' ? pngData?.width  : videoData?.width;
+  const sourceHeight = sourceType === 'png' ? pngData?.height : videoData?.height;
+
+  // Filter user's selected resolutions to drop any that would now require upscaling.
+  // This auto-corrects when the source changes (e.g., they swap in a smaller file).
+  useEffect(() => {
+    if (!sourceWidth || !sourceHeight || !selectedResolutions.length) return;
+    const filtered = selectedResolutions.filter(r =>
+      r.width <= sourceWidth && r.height <= sourceHeight
+    );
+    if (filtered.length !== selectedResolutions.length) {
+      // If all were filtered out, fall back to the largest allowed resolution that fits
+      if (filtered.length === 0 && config?.video?.allowed_resolutions) {
+        const compatible = config.video.allowed_resolutions
+          .filter(r => r.width <= sourceWidth && r.height <= sourceHeight);
+        setSelectedResolutions(compatible.length ? [compatible[compatible.length - 1]] : []);
+      } else {
+        setSelectedResolutions(filtered);
+      }
+    }
+  // Intentional: re-filter when source dimensions change or festival config changes.
+  // selectedResolutions intentionally NOT in deps to prevent infinite loop.
+  }, [sourceWidth, sourceHeight, config]);
+
   const encodeReady = !!(
     filmTitle.trim() && effectiveSource &&
     selectedResolutions.length > 0 &&
@@ -259,6 +285,7 @@ export default function App() {
             onOpenProject={handleOpenProject}
             selectedResolutions={selectedResolutions}
             onSelectedResolutionsChange={setSelectedResolutions}
+            sourceWidth={sourceWidth} sourceHeight={sourceHeight}
             outputDir={outputDir} onOutputDirChange={setOutputDir}
             audioMode={audioMode} onAudioModeChange={setAudioMode}
             audioStems={audioStems} onAudioStemsChange={setAudioStems}
