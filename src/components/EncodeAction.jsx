@@ -184,6 +184,10 @@ export default function EncodeAction({
       ? pngData?.frameCount
       : (videoData?.duration && effectiveFps
           ? Math.round(videoData.duration * effectiveFps) : null);
+    // Source dimensions — passed through so the encoder can apply the
+    // scale filter when target < source (downscale case).
+    const sourceWidth  = sourceType === 'png' ? pngData?.width  : videoData?.width;
+    const sourceHeight = sourceType === 'png' ? pngData?.height : videoData?.height;
     return {
       sourceType,
       sourcePath: sourceType === 'png' ? pngFolder : videoPath,
@@ -192,6 +196,7 @@ export default function EncodeAction({
       frameRate: effectiveFps,
       resolution: resForThisRun, config,
       sourceBitDepth,
+      sourceWidth, sourceHeight,
       sourceCodec: videoData?.codec,
       sourceFps: videoData?.fps,
       sourceDuration,
@@ -231,6 +236,7 @@ export default function EncodeAction({
       artistName: artistName.trim(),
       config,
       watermark,
+      useGPU,           // honor the artist's GPU preference for screener too
       notifyOnComplete,
       preventSleep,
     });

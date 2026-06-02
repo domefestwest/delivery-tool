@@ -21,6 +21,7 @@ const { runWithTimeout } = require('./ffmpeg-capabilities');
 
 // ─── GPU encoder candidate tables ─────────────────────────────────────────────
 
+// HEVC encoders — used for dome master encoding (10-bit, dome quality).
 const GPU_ENCODER_CANDIDATES = {
   darwin: [
     {
@@ -84,14 +85,82 @@ const GPU_ENCODER_CANDIDATES = {
   ],
 };
 
+// H.264 encoders — used for screener encoding (8-bit, jury review quality).
+// Quality params target roughly CRF 28 — fast, smaller files, acceptable
+// for jury review on laptops.
+const GPU_H264_ENCODER_CANDIDATES = {
+  darwin: [
+    {
+      name: 'h264_videotoolbox',
+      label: 'Apple VideoToolbox H.264 (GPU)',
+      pixFmt: 'yuv420p',
+      profile: 'high',
+      extraArgs: [],
+      qualityArgs: ['-q:v', '55'],
+      requiresSystemFFmpeg: true,
+    },
+  ],
+  win32: [
+    {
+      name: 'h264_nvenc',
+      label: 'NVIDIA NVENC H.264 (GPU)',
+      pixFmt: 'yuv420p',
+      profile: 'high',
+      extraArgs: ['-spatial_aq', '1'],
+      qualityArgs: ['-rc', 'vbr', '-cq', '28', '-preset', 'p5'],
+      requiresSystemFFmpeg: false,
+    },
+    {
+      name: 'h264_qsv',
+      label: 'Intel Quick Sync H.264 (GPU)',
+      pixFmt: 'yuv420p',
+      profile: 'high',
+      extraArgs: [],
+      qualityArgs: ['-global_quality', '28', '-preset', 'medium'],
+      requiresSystemFFmpeg: false,
+    },
+    {
+      name: 'h264_amf',
+      label: 'AMD AMF H.264 (GPU)',
+      pixFmt: 'yuv420p',
+      profile: 'high',
+      extraArgs: [],
+      qualityArgs: ['-quality', 'balanced', '-qp_i', '24', '-qp_p', '26', '-qp_b', '28'],
+      requiresSystemFFmpeg: false,
+    },
+  ],
+  linux: [
+    {
+      name: 'h264_nvenc',
+      label: 'NVIDIA NVENC H.264 (GPU)',
+      pixFmt: 'yuv420p',
+      profile: 'high',
+      extraArgs: ['-spatial_aq', '1'],
+      qualityArgs: ['-rc', 'vbr', '-cq', '28', '-preset', 'p5'],
+      requiresSystemFFmpeg: false,
+    },
+    {
+      name: 'h264_vaapi',
+      label: 'VA-API H.264 (GPU)',
+      pixFmt: 'yuv420p',
+      profile: 'high',
+      extraArgs: ['-vaapi_device', '/dev/dri/renderD128'],
+      qualityArgs: ['-rc_mode', 'CQP', '-qp', '24'],
+      requiresSystemFFmpeg: false,
+    },
+  ],
+};
+
 /**
- * Returns the candidate list for a given platform.
+ * Returns the candidate list for a given platform and codec.
+ * Codec defaults to 'hevc' for backward compatibility.
  * Platform falls back to linux for anything not mac/win.
  */
-function getCandidates(platformStr = process.platform) {
-  if (platform.isMac(platformStr))   return GPU_ENCODER_CANDIDATES.darwin;
-  if (platform.isWin(platformStr))   return GPU_ENCODER_CANDIDATES.win32;
-  return GPU_ENCODER_CANDIDATES.linux;
+function getCandidates(platformStr = process.platform, codec = 'hevc') {
+  const tables = codec === 'h264' ? GPU_H264_ENCODER_CANDIDATES : GPU_ENCODER_CANDIDATES;
+  if (platform.isMac(platformStr))   return tables.darwin;
+  if (platform.isWin(platformStr))   return tables.win32;
+  return tables.linux;
 }
 
 // ─── System ffmpeg discovery (for macOS VideoToolbox) ─────────────────────────
@@ -164,9 +233,14 @@ async function testGPUEncoder(ffmpegBin, candidate) {
  *
  * Logs to console at each step so the dev console shows the full decision chain.
  */
-async function detectGPUEncoder({ bundledFFmpegPath, platformStr = process.platform, log = console.log }) {
-  const candidates = getCandidates(platformStr);
-  log(`[GPU] Detecting on platform=${platformStr}, ${candidates.length} candidate(s) to try`);
+async function detectGPUEncoder({
+  bundledFFmpegPath,
+  platformStr = process.platform,
+  log = console.log,
+  codec = 'hevc',   // 'hevc' (dome master) or 'h264' (screener)
+}) {
+  const candidates = getCandidates(platformStr, codec);
+  log(`[GPU/${codec}] Detecting on platform=${platformStr}, ${candidates.length} candidate(s) to try`);
 
   for (const candidate of candidates) {
     let ffmpegBin = bundledFFmpegPath;
@@ -174,11 +248,11 @@ async function detectGPUEncoder({ bundledFFmpegPath, platformStr = process.platf
     if (candidate.requiresSystemFFmpeg) {
       const sys = await findSystemFFmpeg(platformStr);
       if (!sys) {
-        log(`[GPU] ${candidate.name}: needs system ffmpeg, not found — skipping`);
+        log(`[GPU/${codec}] ${candidate.name}: needs system ffmpeg, not found — skipping`);
         continue;
       }
       ffmpegBin = sys.path;
-      log(`[GPU] ${candidate.name}: using system ffmpeg at ${ffmpegBin}`);
+      log(`[GPU/${codec}] ${candidate.name}: using system ffmpeg at ${ffmpegBin}`);
     }
 
     // Step 1: encoder must appear in -encoders output
@@ -186,33 +260,35 @@ async function detectGPUEncoder({ bundledFFmpegPath, platformStr = process.platf
       const r = await runWithTimeout(ffmpegBin, ['-encoders'], 8000);
       const combined = r.stdout + r.stderr;
       if (!new RegExp(`\\b${candidate.name}\\b`).test(combined)) {
-        log(`[GPU] ${candidate.name}: not in encoder list`);
+        log(`[GPU/${codec}] ${candidate.name}: not in encoder list`);
         continue;
       }
     } catch (err) {
-      log(`[GPU] ${candidate.name}: encoder list query failed — ${err.message}`);
+      log(`[GPU/${codec}] ${candidate.name}: encoder list query failed — ${err.message}`);
       continue;
     }
 
     // Step 2: actually test-encode a few frames
     const works = await testGPUEncoder(ffmpegBin, candidate);
     if (works) {
-      log(`[GPU] ✓ ${candidate.name} works — selected`);
+      log(`[GPU/${codec}] ✓ ${candidate.name} works — selected`);
       return {
         ...candidate,
         ffmpegPath: ffmpegBin,
         available: true,
       };
     }
-    log(`[GPU] ✗ ${candidate.name}: test encode failed`);
+    log(`[GPU/${codec}] ✗ ${candidate.name}: test encode failed`);
   }
 
-  log('[GPU] No working GPU encoder — falling back to CPU libx265');
+  const fallback = codec === 'h264' ? 'CPU libx264' : 'CPU libx265';
+  log(`[GPU/${codec}] No working GPU encoder — falling back to ${fallback}`);
   return null;
 }
 
 module.exports = {
   GPU_ENCODER_CANDIDATES,
+  GPU_H264_ENCODER_CANDIDATES,
   getCandidates,
   findSystemFFmpeg,
   testGPUEncoder,

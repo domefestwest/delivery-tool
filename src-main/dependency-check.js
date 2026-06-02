@@ -123,17 +123,27 @@ async function runDependencyCheck({ bundledPath, platformStr = process.platform,
     };
   }
 
-  // ── Step 4: GPU probe (non-fatal) ───────────────────────────────────────────
-  log('[DependencyCheck] Probing GPU encoders…');
+  // ── Step 4: GPU probe (non-fatal) — both HEVC (master) and H.264 (screener)
+  log('[DependencyCheck] Probing GPU encoders for HEVC (dome master)…');
   let gpu = null;
   try {
     gpu = await detectGPUEncoder({
       bundledFFmpegPath: depResult.path,
-      platformStr,
-      log,
+      platformStr, log, codec: 'hevc',
     });
   } catch (err) {
-    log(`[DependencyCheck] GPU detection error (non-fatal): ${err.message}`);
+    log(`[DependencyCheck] HEVC GPU detection error (non-fatal): ${err.message}`);
+  }
+
+  log('[DependencyCheck] Probing GPU encoders for H.264 (screener)…');
+  let gpuH264 = null;
+  try {
+    gpuH264 = await detectGPUEncoder({
+      bundledFFmpegPath: depResult.path,
+      platformStr, log, codec: 'h264',
+    });
+  } catch (err) {
+    log(`[DependencyCheck] H.264 GPU detection error (non-fatal): ${err.message}`);
   }
 
   return {
@@ -152,6 +162,21 @@ async function runDependencyCheck({ bundledPath, platformStr = process.platform,
       : {
           available: false,
           label: 'CPU libx265 (no GPU encoder detected)',
+        },
+    gpuH264: gpuH264
+      ? {
+          available: true,
+          name: gpuH264.name,
+          label: gpuH264.label,
+          ffmpegPath: gpuH264.ffmpegPath,
+          pixFmt: gpuH264.pixFmt,
+          profile: gpuH264.profile,
+          qualityArgs: gpuH264.qualityArgs,
+          extraArgs: gpuH264.extraArgs,
+        }
+      : {
+          available: false,
+          label: 'CPU libx264 (no H.264 GPU encoder detected)',
         },
   };
 }

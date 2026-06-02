@@ -60,7 +60,8 @@ let depCheckResult = null;
 let activeFFmpegPath = null;
 let activeFFprobePath = null;
 let activeConfig = null;
-let activeGPUEncoder = null;
+let activeGPUEncoder = null;       // HEVC GPU encoder (dome master mode)
+let activeGPUH264Encoder = null;   // H.264 GPU encoder (screener mode)
 let encodeProcess = null;
 let powerSaveBlockerId = null;
 let stopUpdateCheck = null;
@@ -71,6 +72,7 @@ function applyDepResult(result) {
     activeFFmpegPath = result.path;
     activeFFprobePath = result.ffprobePath;
     activeGPUEncoder = result.gpu?.available ? result.gpu : null;
+    activeGPUH264Encoder = result.gpuH264?.available ? result.gpuH264 : null;
   }
 }
 
@@ -619,6 +621,8 @@ ipcMain.handle('encode:test', async (_, encodeParams) => {
     sourceType, ffmpegPattern, sourcePath,
     frameRate, resolution, outputVideoPath: tempOut,
     config, gpu, sourceBitDepth,
+    sourceWidth: encodeParams.sourceWidth,
+    sourceHeight: encodeParams.sourceHeight,
   });
 
   // Insert -frames:v just before the output path (which is always last)
@@ -703,6 +707,8 @@ ipcMain.handle('encode:start', async (_, encodeParams) => {
     sourceType, ffmpegPattern, sourcePath,
     frameRate, resolution, outputVideoPath,
     config, gpu, sourceBitDepth,
+    sourceWidth: encodeParams.sourceWidth,
+    sourceHeight: encodeParams.sourceHeight,
   });
 
   const cmdLine = `${encodeFFmpeg} ${ffArgs.join(' ')}`;
@@ -947,7 +953,8 @@ ipcMain.handle('screener:start', async (_, params) => {
     sourceType, sourcePath, ffmpegPattern,
     frameRate, outputDir,
     filmTitle, artistName, config,
-    watermark,           // { type: 'none'|'text'|'image', text, imagePath, opacity, position, moving }
+    watermark,
+    useGPU,              // boolean — artist's preference for screener GPU acceleration
     notifyOnComplete, preventSleep,
   } = params;
 
@@ -969,20 +976,27 @@ ipcMain.handle('screener:start', async (_, params) => {
   const outputFilename = `${safeName}_${festivalCode}${year}_SCREENER.mp4`;
   const outputVideoPath = path.join(deliveryFolder, outputFilename);
 
+  // GPU H.264 encoder — use if available and not explicitly disabled
+  const gpu = (useGPU !== false) && activeGPUH264Encoder;
+  const encodeFFmpeg = gpu ? gpu.ffmpegPath : activeFFmpegPath;
+
   const ffArgs = buildScreenerEncodeArgs({
     sourceType, ffmpegPattern, sourcePath,
     frameRate,
     screenerSpec,
     outputPath: outputVideoPath,
     watermark: watermark?.type === 'none' ? null : watermark,
+    gpuEncoder: gpu || null,
   });
 
-  const cmdLine = `${activeFFmpegPath} ${ffArgs.join(' ')}`;
+  const encoderLabel = gpu ? gpu.label : 'Screener · libx264 CPU';
+  const cmdLine = `${encodeFFmpeg} ${ffArgs.join(' ')}`;
+  console.log(`[Screener] Using ${encoderLabel}`);
   console.log('[Screener] FFmpeg command:', cmdLine);
   mainWindow?.webContents.send('encode:log',
-    `Screener encode\nCommand:\n${cmdLine}\n`);
+    `Encoder: ${encoderLabel}\nCommand:\n${cmdLine}\n`);
   mainWindow?.webContents.send('encode:encoder',
-    { name: 'libx264-screener', label: 'Screener · libx264 CPU', isGPU: false });
+    { name: gpu ? gpu.name : 'libx264', label: encoderLabel, isGPU: !!gpu });
 
   if (preventSleep !== false) startPowerSaveBlocker();
 
@@ -991,7 +1005,7 @@ ipcMain.handle('screener:start', async (_, params) => {
     const startMs = Date.now();
     let lastSizeCheckMs = 0;
 
-    encodeProcess = spawn(activeFFmpegPath, ffArgs);
+    encodeProcess = spawn(encodeFFmpeg, ffArgs);
 
     encodeProcess.stderr.on('data', data => {
       const chunk = data.toString();

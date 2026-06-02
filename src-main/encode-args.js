@@ -30,6 +30,7 @@ function buildEncodeArgs(req) {
     sourceType, ffmpegPattern, sourcePath,
     frameRate, resolution, outputVideoPath,
     config, gpu, sourceBitDepth,
+    sourceWidth, sourceHeight,   // NEW — needed for the downscale filter below
   } = req;
 
   const args = [];
@@ -41,6 +42,15 @@ function buildEncodeArgs(req) {
   } else {
     args.push('-i', sourcePath);
     args.push('-r', String(frameRate));
+  }
+
+  // ── Scale filter (downscale only — Phase 1 governance prevents upscaling) ──
+  // CRITICAL: without this filter, FFmpeg transcodes at source dimensions
+  // regardless of the 'resolution' parameter. A 6K source asked for '4K output'
+  // would silently come out 6K. This filter fires only when source > target.
+  if (sourceWidth && sourceHeight &&
+      (sourceWidth > resolution.width || sourceHeight > resolution.height)) {
+    args.push('-vf', `scale=${resolution.width}:${resolution.height}:flags=lanczos`);
   }
 
   // ── Video codec ─────────────────────────────────────────────────────────────
@@ -174,6 +184,7 @@ function buildScreenerEncodeArgs(req) {
     sourceType, ffmpegPattern, sourcePath,
     frameRate, screenerSpec, outputPath,
     watermark,
+    gpuEncoder,    // optional: { name, pixFmt, profile, qualityArgs, extraArgs }
   } = req;
 
   const args = ['-y'];
@@ -195,10 +206,12 @@ function buildScreenerEncodeArgs(req) {
   // ── Build filter graph ──────────────────────────────────────────────────────
   const w = screenerSpec.resolution.width;
   const h = screenerSpec.resolution.height;
+  // GPU encoders typically want yuv420p (8-bit); CPU libx264 same default.
+  const targetPixFmt = gpuEncoder?.pixFmt || screenerSpec.pix_fmt || 'yuv420p';
 
   // Always scale to screener resolution, regardless of source size
   const filters = [];
-  filters.push(`[0:v]scale=${w}:${h}:flags=lanczos,format=yuv420p[scaled]`);
+  filters.push(`[0:v]scale=${w}:${h}:flags=lanczos,format=${targetPixFmt}[scaled]`);
 
   let finalVideo = '[scaled]';
 
@@ -225,11 +238,21 @@ function buildScreenerEncodeArgs(req) {
   args.push('-map', finalVideo);
 
   // ── Video codec ─────────────────────────────────────────────────────────────
-  args.push('-c:v', screenerSpec.codec || 'libx264');
-  args.push('-pix_fmt', screenerSpec.pix_fmt || 'yuv420p');
-  args.push('-crf', String(screenerSpec.crf ?? 28));
-  args.push('-preset', screenerSpec.preset || 'fast');
-  if (screenerSpec.profile) args.push('-profile:v', screenerSpec.profile);
+  if (gpuEncoder) {
+    // GPU path: H.264 via VideoToolbox / NVENC / QSV / AMF / VA-API
+    args.push('-c:v', gpuEncoder.name);
+    args.push('-pix_fmt', gpuEncoder.pixFmt);
+    if (gpuEncoder.profile) args.push('-profile:v', gpuEncoder.profile);
+    args.push(...gpuEncoder.qualityArgs);
+    if (gpuEncoder.extraArgs?.length) args.push(...gpuEncoder.extraArgs);
+  } else {
+    // CPU path: libx264 with CRF
+    args.push('-c:v', screenerSpec.codec || 'libx264');
+    args.push('-pix_fmt', screenerSpec.pix_fmt || 'yuv420p');
+    args.push('-crf', String(screenerSpec.crf ?? 28));
+    args.push('-preset', screenerSpec.preset || 'fast');
+    if (screenerSpec.profile) args.push('-profile:v', screenerSpec.profile);
+  }
   args.push('-r', String(frameRate));
 
   // ── Audio (video source only — PNG has no audio) ────────────────────────────
