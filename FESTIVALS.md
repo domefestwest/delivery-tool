@@ -146,6 +146,82 @@ That's fine — the `festival_icon` field is **optional**. The app falls back to
 
 ---
 
+## Optional: Screener mode (experimental)
+
+Many festivals receive films in two phases — **screeners** for jury review during selection, then **dome masters** from the artists who get accepted. This tool now supports both.
+
+When your config includes a `screener` block, an artist using the tool sees a **Deliverable** toggle in the app: **🎬 Dome Master** vs **🎞 Screener**. Screener mode produces a low-resolution, fast-encoded MP4 with optional watermarking — appropriate for jury review on a laptop, NOT for dome projection.
+
+### Screener config schema (optional)
+
+```json
+{
+  "screener": {
+    "enabled": true,
+    "resolution": { "label": "2K", "width": 2048, "height": 2048 },
+    "codec": "libx264",
+    "pix_fmt": "yuv420p",
+    "crf": 28,
+    "preset": "fast",
+    "profile": "high",
+    "audio_codec": "aac",
+    "audio_bitrate": "192k",
+    "audio_channels": 2,
+    "max_source_label": "4K"
+  }
+}
+```
+
+| Field | Effect |
+|---|---|
+| `enabled` | Set to `false` to hide screener mode for your festival |
+| `resolution` | Output dimensions for the screener (2K square is standard for fulldome) |
+| `codec` | H.264 strongly recommended — universally playable on jury laptops |
+| `crf` | 28 is a sensible default; lower = higher quality + larger file |
+| `preset` | `fast` encodes quickly with acceptable quality. `medium` for slightly smaller files. |
+| `audio_*` | Screeners always downmix to stereo AAC |
+| `max_source_label` | Optional hint — when source ≤ this bracket, screener mode is recommended |
+
+### Watermarking
+
+When in screener mode, artists can apply a watermark at 30% opacity:
+- **Text**: customizable, e.g. "SCREENER · NOT FOR DISTRIBUTION"
+- **Image**: a PNG the artist supplies (their studio logo, etc.)
+- **Position**: 5 choices (center, 4 corners)
+- **Movement**: optional toggle that rotates the watermark between corners every 15 seconds (anti-camcorder measure)
+
+### Output naming
+
+Screeners get a `_SCREENER` suffix in both the folder and file name:
+
+```
+Beyond_the_Dome_DFW2027_SCREENER/
+├── Beyond_the_Dome_DFW2027_SCREENER.mp4
+└── screener_report.txt
+```
+
+The `screener_report.txt` is prominently labeled "NOT FOR DOME PROJECTION" so there's no chance of confusing it with a dome master submission.
+
+---
+
+## Resolution governance — the tool never upscales
+
+A critical invariant: the tool will **NEVER** allow upscaling. If an artist drops in a 2K source, they cannot output it "at 8K." This prevents fake dome masters where the file looks high-resolution but is actually low-res image data scaled up.
+
+How it works:
+
+| Source resolution | Festival has [4K, 6K, 8K] | What the artist sees |
+|---|---|---|
+| 2K (≤ 2048) | none allowed | Buttons all greyed out; if screener mode enabled, prompted to use it instead |
+| 4K (≤ 4096) | 4K only | 6K and 8K buttons greyed out with explanation |
+| 5K (between brackets) | 4K only | Same — round down, never up |
+| 6K (≤ 6144) | 4K + 6K | 8K greyed out |
+| 8K (≤ 8192) | 4K + 6K + 8K | All three available |
+
+For non-square sources, both width AND height must fit the target resolution. The tool checks both dimensions.
+
+---
+
 ## Recommended encoding spec (don't change unless you know why)
 
 These are the validated baseline values — they're what Dome Fest West uses in production and have been proven on multiple planetarium playback systems (SkySkan and others). New festivals adopting the tool should start with these:
