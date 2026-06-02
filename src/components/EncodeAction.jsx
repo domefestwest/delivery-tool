@@ -43,12 +43,14 @@ export default function EncodeAction({
   config, filmTitle, artistName,
   sourceType, pngData, pngFolder, pngFrameRate,
   videoPath, videoData, videoFrameRate,
+  mode, watermark,
   selectedResolutions, outputDir,
   audioMode, audioStems, audioInterleaved, muxAudio,
   frameRateWarning, encodeReady,
   depStatus, useGPU,
   autoZip, notifyOnComplete, autoOpenFolder, preventSleep,
 }) {
+  const isScreener = mode === 'screener';
   const [encoding, setEncoding] = useState(false);
   const [result, setResult]     = useState(null);            // single result or { batchResults: [] }
   const [error, setError]       = useState(null);
@@ -207,7 +209,42 @@ export default function EncodeAction({
     setTestResult(r);
   };
 
+  const handleScreenerEncode = async () => {
+    if (encoding) return;
+    setEncoding(true);
+    setResult(null); setError(null); setProgress(null);
+    setActiveEncoder(null); setLog(''); setElapsedMs(0); setTestResult(null);
+
+    const totalFrames = sourceType === 'png'
+      ? pngData?.frameCount
+      : (videoData?.duration && effectiveFps
+          ? Math.round(videoData.duration * effectiveFps) : null);
+
+    const r = await window.api.startScreener({
+      sourceType,
+      sourcePath: sourceType === 'png' ? pngFolder : videoPath,
+      ffmpegPattern: pngData?.ffmpegPattern,
+      frameRate: effectiveFps,
+      totalFrames,
+      outputDir,
+      filmTitle: filmTitle.trim(),
+      artistName: artistName.trim(),
+      config,
+      watermark,
+      notifyOnComplete,
+      preventSleep,
+    });
+
+    setEncoding(false);
+    if (r.error) setError(r.error);
+    else {
+      setResult(r);
+      if (autoOpenFolder && r.deliveryFolder) window.api.openPath(r.deliveryFolder);
+    }
+  };
+
   const handleEncode = async () => {
+    if (isScreener) return handleScreenerEncode();
     if (!encodeReady || encoding) return;
     setEncoding(true);
     setResult(null); setError(null); setProgress(null);
@@ -335,9 +372,15 @@ export default function EncodeAction({
   if (sourceType === 'png' && !pngData) issues.push('Source folder');
   if (sourceType === 'video' && !videoData) issues.push('Source video');
   if (frameRateWarning?.type === 'unsupported') issues.push('Frame rate unsupported');
-  if (!selectedResolutions?.length) issues.push('Resolution(s)');
   if (!effectiveFps) issues.push('Frame rate');
   if (!outputDir) issues.push('Output folder');
+  // Screener mode doesn't need selected resolutions
+  if (!isScreener && !selectedResolutions?.length) issues.push('Resolution(s)');
+
+  // For screener mode, only need: title + source + fps + output (no resolution batch)
+  const screenerReady = isScreener && filmTitle.trim() && (pngData || videoData)
+    && effectiveFps && outputDir && config?.screener?.enabled;
+  const effectiveEncodeReady = isScreener ? screenerReady : encodeReady;
 
   const diskIcon = diskCheck?.check?.status === 'ok' ? '✓'
     : diskCheck?.check?.status === 'tight' ? '⚠'
@@ -400,10 +443,12 @@ export default function EncodeAction({
           <button
             className="btn btn-primary btn-lg btn-encode"
             onClick={handleEncode}
-            disabled={!encodeReady || encoding || testing || diskCheck?.check?.status === 'insufficient'}
+            disabled={!effectiveEncodeReady || encoding || testing
+                      || (!isScreener && diskCheck?.check?.status === 'insufficient')}
             title="⌘E / Ctrl+E"
           >
             {encoding ? '⏳ Encoding…'
+              : isScreener ? '🎞 Encode Screener'
               : isBatch ? `▶ Encode ${selectedResolutions.length} resolutions`
               : '▶ Encode and Package'}
           </button>

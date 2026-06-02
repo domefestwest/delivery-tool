@@ -148,9 +148,148 @@ function buildStemNormalizeArgs({ inputPath, outputPath }) {
   ];
 }
 
+/**
+ * Build the ffmpeg argv array for SCREENER encoding (jury review files).
+ *
+ * Screener-mode is distinct from dome master encoding:
+ *   • Lower resolution (typically 2K square) — fast to encode, fast to play back
+ *   • H.264 8-bit — broadly compatible with any jury laptop/preview tool
+ *   • Higher CRF (28 default) — smaller files, acceptable quality for review
+ *   • Audio always muxed as stereo AAC — no stem separation
+ *   • Single output file, no separate audio folder
+ *   • Optional watermark overlay (PNG image or text, with opacity)
+ *
+ * @param {object} req
+ * @param {string} req.sourceType           — 'png' | 'video'
+ * @param {string} [req.ffmpegPattern]       — PNG sequence pattern
+ * @param {string} [req.sourcePath]          — video file path
+ * @param {number} req.frameRate
+ * @param {object} req.screenerSpec          — from config.screener
+ * @param {string} req.outputPath
+ * @param {object} [req.watermark]           — { type, text, imagePath, opacity, position, moving }
+ * @returns {string[]} argv array
+ */
+function buildScreenerEncodeArgs(req) {
+  const {
+    sourceType, ffmpegPattern, sourcePath,
+    frameRate, screenerSpec, outputPath,
+    watermark,
+  } = req;
+
+  const args = ['-y'];
+
+  // ── Input ───────────────────────────────────────────────────────────────────
+  if (sourceType === 'png') {
+    args.push('-framerate', String(frameRate), '-i', ffmpegPattern);
+  } else {
+    args.push('-i', sourcePath);
+  }
+
+  // Watermark inputs come AFTER source so we can reference them as [1:v]
+  let wmInputIndex = null;
+  if (watermark?.type === 'image' && watermark.imagePath) {
+    args.push('-i', watermark.imagePath);
+    wmInputIndex = 1;
+  }
+
+  // ── Build filter graph ──────────────────────────────────────────────────────
+  const w = screenerSpec.resolution.width;
+  const h = screenerSpec.resolution.height;
+
+  // Always scale to screener resolution, regardless of source size
+  const filters = [];
+  filters.push(`[0:v]scale=${w}:${h}:flags=lanczos,format=yuv420p[scaled]`);
+
+  let finalVideo = '[scaled]';
+
+  if (watermark?.type === 'image' && wmInputIndex !== null) {
+    const opacity = watermark.opacity ?? 0.3;
+    filters.push(
+      `[${wmInputIndex}:v]format=rgba,colorchannelmixer=aa=${opacity},scale=iw*${w/2048}:ih*${w/2048}[wm]`
+    );
+    const overlayPosition = watermarkOverlayPosition(watermark, w, h);
+    filters.push(`[scaled][wm]overlay=${overlayPosition}[out]`);
+    finalVideo = '[out]';
+  } else if (watermark?.type === 'text' && watermark.text) {
+    const opacity = watermark.opacity ?? 0.3;
+    const escapedText = String(watermark.text).replace(/'/g, "\\'");
+    const fontSize = Math.max(40, Math.floor(w / 30));
+    const textPos = watermarkTextPosition(watermark);
+    filters.push(
+      `[scaled]drawtext=text='${escapedText}':fontcolor=white@${opacity}:fontsize=${fontSize}:${textPos}[out]`
+    );
+    finalVideo = '[out]';
+  }
+
+  args.push('-filter_complex', filters.join(';'));
+  args.push('-map', finalVideo);
+
+  // ── Video codec ─────────────────────────────────────────────────────────────
+  args.push('-c:v', screenerSpec.codec || 'libx264');
+  args.push('-pix_fmt', screenerSpec.pix_fmt || 'yuv420p');
+  args.push('-crf', String(screenerSpec.crf ?? 28));
+  args.push('-preset', screenerSpec.preset || 'fast');
+  if (screenerSpec.profile) args.push('-profile:v', screenerSpec.profile);
+  args.push('-r', String(frameRate));
+
+  // ── Audio (video source only — PNG has no audio) ────────────────────────────
+  if (sourceType === 'video') {
+    args.push('-map', '0:a?');           // include audio if present, don't fail if not
+    args.push('-c:a', screenerSpec.audio_codec || 'aac');
+    args.push('-b:a', screenerSpec.audio_bitrate || '192k');
+    args.push('-ac', String(screenerSpec.audio_channels || 2));  // downmix to stereo
+  } else {
+    args.push('-an');
+  }
+
+  // ── Output ──────────────────────────────────────────────────────────────────
+  args.push('-movflags', '+faststart'); // makes playback start before full download
+  args.push(outputPath);
+
+  return args;
+}
+
+/**
+ * Build the overlay= expression for image watermarks (with optional moving).
+ */
+function watermarkOverlayPosition(watermark, w, h) {
+  if (!watermark.moving) {
+    // Static — center by default; corners if requested
+    const pos = watermark.position || 'center';
+    if (pos === 'top-left')     return '50:50';
+    if (pos === 'top-right')    return 'W-w-50:50';
+    if (pos === 'bottom-left')  return '50:H-h-50';
+    if (pos === 'bottom-right') return 'W-w-50:H-h-50';
+    return '(W-w)/2:(H-h)/2';   // center
+  }
+  // Moving: rotate between 4 positions every 15 seconds
+  // Anti-camcorder: makes it harder to crop out the watermark
+  const x = `if(lt(mod(t,60),15), 50, if(lt(mod(t,60),30), W-w-50, if(lt(mod(t,60),45), 50, W-w-50)))`;
+  const y = `if(lt(mod(t,60),15), 50, if(lt(mod(t,60),30), 50, if(lt(mod(t,60),45), H-h-50, H-h-50)))`;
+  return `x='${x}':y='${y}'`;
+}
+
+/**
+ * Build the x/y position arguments for text watermarks.
+ */
+function watermarkTextPosition(watermark) {
+  if (!watermark.moving) {
+    const pos = watermark.position || 'center';
+    if (pos === 'top-left')     return 'x=50:y=50';
+    if (pos === 'top-right')    return 'x=w-text_w-50:y=50';
+    if (pos === 'bottom-left')  return 'x=50:y=h-text_h-50';
+    if (pos === 'bottom-right') return 'x=w-text_w-50:y=h-text_h-50';
+    return 'x=(w-text_w)/2:y=(h-text_h)/2';
+  }
+  const x = `x='if(lt(mod(t,60),15), 50, if(lt(mod(t,60),30), w-text_w-50, if(lt(mod(t,60),45), 50, w-text_w-50)))'`;
+  const y = `y='if(lt(mod(t,60),15), 50, if(lt(mod(t,60),30), 50, if(lt(mod(t,60),45), h-text_h-50, h-text_h-50)))'`;
+  return `${x}:${y}`;
+}
+
 module.exports = {
   buildEncodeArgs,
   buildSplitStemsArgs,
   buildMuxArgs,
   buildStemNormalizeArgs,
+  buildScreenerEncodeArgs,
 };

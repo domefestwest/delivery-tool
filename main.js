@@ -14,7 +14,7 @@ const platform                = require('./src-main/platform');
 const { runWithTimeout }      = require('./src-main/ffmpeg-capabilities');
 const { runDependencyCheck }  = require('./src-main/dependency-check');
 const { processAudio }        = require('./src-main/audio-processor');
-const { buildEncodeArgs }     = require('./src-main/encode-args');
+const { buildEncodeArgs, buildScreenerEncodeArgs } = require('./src-main/encode-args');
 const { buildDeliveryReport } = require('./src-main/delivery-report');
 const { detectGaps, formatGapReport } = require('./src-main/gap-detector');
 const { estimateOutputSize, recommendedFreeBytes } = require('./src-main/output-estimate');
@@ -932,6 +932,186 @@ ipcMain.handle('encode:cancel', () => {
     return { canceled: true };
   }
   return { canceled: false };
+});
+
+// ─── IPC: Screener encode (experimental) ──────────────────────────────────────
+// Separate handler from the main dome-master encode flow because the screener
+// pipeline is much simpler — single output file, no stems, no MD5/loudness/
+// verification, no batch resolution. Optimized for fast 2K H.264 with watermark.
+
+ipcMain.handle('screener:start', async (_, params) => {
+  if (!activeFFmpegPath) return { error: 'FFmpeg not available.' };
+  if (encodeProcess) return { error: 'An encode is already running.' };
+
+  const {
+    sourceType, sourcePath, ffmpegPattern,
+    frameRate, outputDir,
+    filmTitle, artistName, config,
+    watermark,           // { type: 'none'|'text'|'image', text, imagePath, opacity, position, moving }
+    notifyOnComplete, preventSleep,
+  } = params;
+
+  const screenerSpec = config?.screener;
+  if (!screenerSpec || !screenerSpec.enabled) {
+    return { error: 'Screener mode is not enabled in this festival config.' };
+  }
+
+  const year = config.version;
+  const safeName = sanitizeFilmTitle(filmTitle);
+  const festivalCode = config.festival_short || 'FEST';
+
+  // Screener delivery folder gets a _SCREENER suffix so it's never confused
+  // with a dome master delivery.
+  const folderName = `${safeName}_${festivalCode}${year}_SCREENER`;
+  const deliveryFolder = path.join(outputDir, folderName);
+  fs.mkdirSync(deliveryFolder, { recursive: true });
+
+  const outputFilename = `${safeName}_${festivalCode}${year}_SCREENER.mp4`;
+  const outputVideoPath = path.join(deliveryFolder, outputFilename);
+
+  const ffArgs = buildScreenerEncodeArgs({
+    sourceType, ffmpegPattern, sourcePath,
+    frameRate,
+    screenerSpec,
+    outputPath: outputVideoPath,
+    watermark: watermark?.type === 'none' ? null : watermark,
+  });
+
+  const cmdLine = `${activeFFmpegPath} ${ffArgs.join(' ')}`;
+  console.log('[Screener] FFmpeg command:', cmdLine);
+  mainWindow?.webContents.send('encode:log',
+    `Screener encode\nCommand:\n${cmdLine}\n`);
+  mainWindow?.webContents.send('encode:encoder',
+    { name: 'libx264-screener', label: 'Screener · libx264 CPU', isGPU: false });
+
+  if (preventSleep !== false) startPowerSaveBlocker();
+
+  return new Promise(resolve => {
+    let stderr = '';
+    const startMs = Date.now();
+    let lastSizeCheckMs = 0;
+
+    encodeProcess = spawn(activeFFmpegPath, ffArgs);
+
+    encodeProcess.stderr.on('data', data => {
+      const chunk = data.toString();
+      stderr += chunk;
+      const frameMatch = chunk.match(/frame=\s*(\d+)/);
+      const fpsMatch   = chunk.match(/fps=\s*([\d.]+)/);
+      const speedMatch = chunk.match(/speed=\s*([\d.]+)x/);
+
+      if (frameMatch) {
+        let liveSizeBytes = null;
+        const now = Date.now();
+        if (now - lastSizeCheckMs > 2000) {
+          lastSizeCheckMs = now;
+          try {
+            if (fs.existsSync(outputVideoPath)) {
+              liveSizeBytes = fs.statSync(outputVideoPath).size;
+            }
+          } catch (_) {}
+        }
+        mainWindow?.webContents.send('encode:progress', {
+          frame: parseInt(frameMatch[1], 10),
+          fps: fpsMatch ? parseFloat(fpsMatch[1]) : null,
+          speed: speedMatch ? parseFloat(speedMatch[1]) : null,
+          totalFrames: params.totalFrames || null,
+          elapsedMs: now - startMs,
+          liveSizeBytes,
+        });
+      }
+      mainWindow?.webContents.send('encode:log', chunk);
+    });
+
+    encodeProcess.on('close', async code => {
+      encodeProcess = null;
+      stopPowerSaveBlocker();
+      if (code !== 0) {
+        resolve({ error: `FFmpeg exited with code ${code}`, stderr });
+        return;
+      }
+
+      const videoStat = fs.existsSync(outputVideoPath) ? fs.statSync(outputVideoPath) : null;
+      const videoMd5 = videoStat ? await computeMd5(outputVideoPath).catch(() => null) : null;
+
+      // Minimal report — screeners don't need the full dome-master delivery report
+      const lines = [
+        '='.repeat(60),
+        `${config.festival_name} ${config.version} — Screener File`,
+        '='.repeat(60),
+        '',
+        `Film Title:      ${filmTitle}`,
+        `Artist/Studio:   ${artistName || '(not provided)'}`,
+        `Encode Date:     ${new Date().toISOString().replace('T', ' ').split('.')[0]} UTC`,
+        `Encode Duration: ${Math.round((Date.now() - startMs) / 1000)}s`,
+        '',
+        `THIS IS A SCREENER FILE — NOT FOR DOME PROJECTION`,
+        '',
+        `Output File:     ${outputFilename}`,
+        `Codec:           ${screenerSpec.codec} (H.264) · ${screenerSpec.pix_fmt}`,
+        `Resolution:      ${screenerSpec.resolution.width}×${screenerSpec.resolution.height}`,
+        `Frame Rate:      ${frameRate}fps`,
+        `CRF:             ${screenerSpec.crf}`,
+        `File Size:       ${videoStat ? (videoStat.size / 1024 / 1024).toFixed(1) + ' MB' : 'unknown'}`,
+        `MD5 Checksum:    ${videoMd5 || '(unavailable)'}`,
+        `Watermark:       ${watermark?.type === 'none' || !watermark?.type ? 'none' :
+                            watermark.type === 'text' ? `text "${watermark.text}" (${Math.round((watermark.opacity ?? 0.3) * 100)}%${watermark.moving ? ', moving' : ''})` :
+                            `image (${Math.round((watermark.opacity ?? 0.3) * 100)}%${watermark.moving ? ', moving' : ''})`}`,
+        '',
+        '='.repeat(60),
+        `Delivery questions? Contact ${config.contact_email}`,
+        '='.repeat(60),
+      ];
+      const reportPath = path.join(deliveryFolder, 'screener_report.txt');
+      fs.writeFileSync(reportPath, lines.join('\n'), 'utf8');
+
+      try {
+        settingsStore.addRecentEncode(app.getPath('userData'), {
+          filmTitle, artistName,
+          resolution: screenerSpec.resolution.label + ' SCREENER',
+          frameRate,
+          encoder: 'Screener (H.264)',
+          sourceType,
+          deliveryFolder,
+          encodeDate: new Date().toISOString(),
+          durationMs: Date.now() - startMs,
+          fileSizeBytes: videoStat?.size || 0,
+        });
+      } catch (_) {}
+
+      if (notifyOnComplete !== false && Notification.isSupported()) {
+        try {
+          const n = new Notification({
+            title: 'Screener encode complete',
+            body: `${filmTitle} screener ready (${videoStat ? (videoStat.size / 1024 / 1024).toFixed(0) + ' MB' : ''}).`,
+            silent: false,
+          });
+          n.on('click', () => {
+            if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+            shell.openPath(deliveryFolder);
+          });
+          n.show();
+        } catch (_) {}
+      }
+
+      resolve({
+        success: true,
+        deliveryFolder,
+        outputPath: outputVideoPath,
+        outputFilename,
+        videoSizeBytes: videoStat?.size || 0,
+        videoMd5,
+        isScreener: true,
+        report: lines.join('\n'),
+      });
+    });
+
+    encodeProcess.on('error', err => {
+      encodeProcess = null;
+      stopPowerSaveBlocker();
+      resolve({ error: err.message });
+    });
+  });
 });
 
 // ─── App lifecycle ────────────────────────────────────────────────────────────

@@ -68,6 +68,7 @@ contextBridge.exposeInMainWorld('api', {
   startEncode:    (params) => ipcRenderer.invoke('encode:start', params),
   cancelEncode:   ()       => ipcRenderer.invoke('encode:cancel'),
   testEncode:     (params) => ipcRenderer.invoke('encode:test', params),
+  startScreener:  (params) => ipcRenderer.invoke('screener:start', params),
 
   // Encode events
   onEncodeProgress: (cb) => {

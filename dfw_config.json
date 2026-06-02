@@ -57,5 +57,22 @@
   "delivery": {
     "folder_name_template": "{FilmTitle}_DFW{Year}",
     "max_file_size_gb": 100
+  },
+  "screener": {
+    "enabled": true,
+    "resolution": {
+      "label": "2K",
+      "width": 2048,
+      "height": 2048
+    },
+    "codec": "libx264",
+    "pix_fmt": "yuv420p",
+    "crf": 28,
+    "preset": "fast",
+    "profile": "high",
+    "audio_codec": "aac",
+    "audio_bitrate": "192k",
+    "audio_channels": 2,
+    "max_source_label": "4K"
   }
 }

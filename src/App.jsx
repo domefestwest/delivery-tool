@@ -29,6 +29,16 @@ export default function App() {
   const [outputDir, setOutputDir]   = useState(null);
   const [useGPU, setUseGPU]         = useState(true);
 
+  // Mode: 'master' (default) or 'screener' (experimental — for jury review files)
+  const [mode, setMode] = useState('master');
+
+  // Screener watermark state
+  const [watermarkType, setWatermarkType]     = useState('none'); // 'none' | 'text' | 'image'
+  const [watermarkText, setWatermarkText]     = useState('SCREENER · NOT FOR DISTRIBUTION');
+  const [watermarkImage, setWatermarkImage]   = useState(null);
+  const [watermarkMoving, setWatermarkMoving] = useState(false);
+  const [watermarkPosition, setWatermarkPosition] = useState('center');
+
   const [audioMode, setAudioMode]   = useState('none');
   const [audioStems, setAudioStems] = useState([]);
   const [audioInterleaved, setAudioInterleaved] = useState(null);
@@ -283,6 +293,12 @@ export default function App() {
             onReplayRecent={handleReplayRecent}
             onSaveProject={handleSaveProject}
             onOpenProject={handleOpenProject}
+            mode={mode} onModeChange={setMode}
+            watermarkType={watermarkType} onWatermarkTypeChange={setWatermarkType}
+            watermarkText={watermarkText} onWatermarkTextChange={setWatermarkText}
+            watermarkImage={watermarkImage} onWatermarkImageChange={setWatermarkImage}
+            watermarkMoving={watermarkMoving} onWatermarkMovingChange={setWatermarkMoving}
+            watermarkPosition={watermarkPosition} onWatermarkPositionChange={setWatermarkPosition}
             selectedResolutions={selectedResolutions}
             onSelectedResolutionsChange={setSelectedResolutions}
             sourceWidth={sourceWidth} sourceHeight={sourceHeight}
@@ -311,6 +327,15 @@ export default function App() {
           sourceType={sourceType}
           pngData={pngData} pngFolder={pngFolder} pngFrameRate={pngFrameRate}
           videoPath={videoPath} videoData={videoData} videoFrameRate={videoFrameRate}
+          mode={mode}
+          watermark={{
+            type: watermarkType,
+            text: watermarkText,
+            imagePath: watermarkImage,
+            moving: watermarkMoving,
+            position: watermarkPosition,
+            opacity: 0.3,
+          }}
           selectedResolutions={selectedResolutions} outputDir={outputDir}
           audioMode={audioMode} audioStems={audioStems}
           audioInterleaved={audioInterleaved} muxAudio={muxAudio}

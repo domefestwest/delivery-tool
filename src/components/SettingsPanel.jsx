@@ -39,6 +39,14 @@ export default function SettingsPanel({
   filmTitle, artistName, onTitleChange, onArtistChange,
   recentEncodes, onReplayRecent,
   onSaveProject, onOpenProject,
+  // mode (master vs screener)
+  mode, onModeChange,
+  // screener watermark
+  watermarkType, onWatermarkTypeChange,
+  watermarkText, onWatermarkTextChange,
+  watermarkImage, onWatermarkImageChange,
+  watermarkMoving, onWatermarkMovingChange,
+  watermarkPosition, onWatermarkPositionChange,
   // output
   selectedResolutions, onSelectedResolutionsChange,
   sourceWidth, sourceHeight,
@@ -87,9 +95,59 @@ export default function SettingsPanel({
     if (dir) onOutputDirChange(dir);
   };
 
+  const screenerEnabled = !!config?.screener?.enabled;
+  const isScreener = mode === 'screener';
+
+  const handlePickWatermarkImage = async () => {
+    const f = await window.api.openFile({
+      title: 'Choose Watermark Image',
+      filters: [{ name: 'Image', extensions: ['png', 'jpg', 'jpeg'] }],
+    });
+    if (f) onWatermarkImageChange(f);
+  };
+
   return (
     <div className="card settings-panel">
       <div className="card-title">Settings</div>
+
+      {/* ─── MODE (only shown when festival enables screener) ─── */}
+      {screenerEnabled && (
+        <div className="settings-section">
+          <SectionLabel
+            badge={isScreener ? (
+              <span style={{
+                background: 'rgba(232,184,75,0.15)', color: '#e8c96e',
+                padding: '2px 8px', borderRadius: 4, fontSize: 10,
+                fontWeight: 700, letterSpacing: '0.06em',
+              }}>🧪 EXPERIMENTAL</span>
+            ) : null}
+          >
+            DELIVERABLE
+          </SectionLabel>
+          <div className="segment-control compact">
+            <button
+              className={`segment-btn ${!isScreener ? 'active' : ''}`}
+              onClick={() => onModeChange('master')}
+              title="Encode a dome master for festival delivery"
+            >
+              🎬 Dome Master
+            </button>
+            <button
+              className={`segment-btn ${isScreener ? 'active' : ''}`}
+              onClick={() => onModeChange('screener')}
+              title="Encode a low-resolution screener for jury review"
+            >
+              🎞 Screener
+            </button>
+          </div>
+          {isScreener && (
+            <div className="muted small" style={{ marginTop: 6, fontSize: 11, lineHeight: 1.5 }}>
+              Screener mode produces a fast 2K H.264 file for jury review.
+              Not for dome projection. Currently experimental.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ─── FILM ─── */}
       <div className="settings-section">
@@ -170,7 +228,8 @@ export default function SettingsPanel({
         </div>
       </div>
 
-      {/* ─── OUTPUT ─── */}
+      {/* ─── OUTPUT (master mode) ─── */}
+      {!isScreener && (
       <div className="settings-section">
         <SectionLabel
           badge={selectedResolutions?.length > 1 ? (
@@ -260,8 +319,129 @@ export default function SettingsPanel({
           <button className="btn btn-secondary btn-icon" onClick={handleOutputDir}>📁</button>
         </div>
       </div>
+      )}
 
-      {/* ─── AUDIO ─── */}
+      {/* ─── SCREENER OUTPUT (when in screener mode) ─── */}
+      {isScreener && (
+        <div className="settings-section">
+          <SectionLabel>OUTPUT</SectionLabel>
+          <div style={{
+            background: 'var(--bg-1)', border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)', padding: '10px 14px', marginBottom: 8,
+            fontSize: 12, lineHeight: 1.7,
+          }}>
+            <div>
+              <span className="chip chip-yellow">{config?.screener?.resolution?.label || '2K'}</span>
+              {' '}<span style={{ color: '#999' }}>
+                {config?.screener?.resolution?.width || 2048}×{config?.screener?.resolution?.height || 2048}
+                {' '}· {(config?.screener?.codec || 'libx264').toUpperCase()}
+                {' '}· CRF {config?.screener?.crf ?? 28}
+                {' '}· {config?.screener?.preset || 'fast'}
+              </span>
+            </div>
+            <div style={{ fontSize: 11, color: '#666', marginTop: 4 }}>
+              Output: <code style={{ fontSize: 10 }}>{`{Title}_{FESTIVAL}{Year}_SCREENER.mp4`}</code>
+            </div>
+          </div>
+          <div className="settings-row">
+            <div className={`path-display compact ${outputDir ? 'has-value' : ''}`}
+                 title={outputDir || ''}>
+              {outputDir || 'Output folder *'}
+            </div>
+            <button className="btn btn-secondary btn-icon" onClick={handleOutputDir}>📁</button>
+          </div>
+        </div>
+      )}
+
+      {/* ─── SCREENER WATERMARK (when in screener mode) ─── */}
+      {isScreener && (
+        <div className="settings-section">
+          <SectionLabel>WATERMARK</SectionLabel>
+          <div className="segment-control compact" style={{ marginBottom: 10 }}>
+            {[
+              { id: 'none',  label: 'None' },
+              { id: 'text',  label: 'Text' },
+              { id: 'image', label: 'Image' },
+            ].map(m => (
+              <button
+                key={m.id}
+                className={`segment-btn ${watermarkType === m.id ? 'active' : ''}`}
+                onClick={() => onWatermarkTypeChange(m.id)}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+
+          {watermarkType === 'text' && (
+            <input
+              className="input-field compact"
+              type="text"
+              value={watermarkText || ''}
+              onChange={e => onWatermarkTextChange(e.target.value)}
+              placeholder="e.g. SCREENER · DO NOT DISTRIBUTE"
+              style={{ marginBottom: 8 }}
+            />
+          )}
+
+          {watermarkType === 'image' && (
+            <div className="settings-row" style={{ marginBottom: 8 }}>
+              <div className={`path-display compact ${watermarkImage ? 'has-value' : ''}`}
+                   title={watermarkImage || ''}>
+                {watermarkImage
+                  ? watermarkImage.split(/[\\/]/).pop()
+                  : 'No image selected'}
+              </div>
+              <button className="btn btn-secondary btn-icon" onClick={handlePickWatermarkImage}>📁</button>
+            </div>
+          )}
+
+          {watermarkType !== 'none' && (
+            <>
+              <div className="settings-row" style={{ marginBottom: 8, gap: 12 }}>
+                <span className="muted small" style={{ fontSize: 11 }}>Position:</span>
+                <div className="segment-control compact" style={{ flex: 1 }}>
+                  {[
+                    { id: 'center',       label: 'Center' },
+                    { id: 'top-left',     label: '↖' },
+                    { id: 'top-right',    label: '↗' },
+                    { id: 'bottom-left',  label: '↙' },
+                    { id: 'bottom-right', label: '↘' },
+                  ].map(p => (
+                    <button
+                      key={p.id}
+                      className={`segment-btn ${watermarkPosition === p.id ? 'active' : ''}`}
+                      onClick={() => onWatermarkPositionChange(p.id)}
+                      disabled={watermarkMoving}
+                      style={watermarkMoving ? { opacity: 0.4, cursor: 'not-allowed' } : {}}
+                      title={p.id}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <label className="checkbox-inline">
+                <input
+                  type="checkbox"
+                  checked={!!watermarkMoving}
+                  onChange={e => onWatermarkMovingChange(e.target.checked)}
+                />
+                <span style={{ fontSize: 12 }}>
+                  Move watermark between corners (anti-camcorder)
+                </span>
+              </label>
+            </>
+          )}
+
+          <div className="muted small" style={{ marginTop: 8, fontSize: 11 }}>
+            Watermark is overlaid at 30% opacity. Helps prevent screener leaks.
+          </div>
+        </div>
+      )}
+
+      {/* ─── AUDIO (master mode only — screener is always stereo AAC mux) ─── */}
+      {!isScreener && (
       <div className="settings-section">
         <SectionLabel>AUDIO</SectionLabel>
         <div className="segment-control compact" style={{ marginBottom: 10 }}>
@@ -307,6 +487,7 @@ export default function SettingsPanel({
           </label>
         )}
       </div>
+      )}
 
       {/* ─── ENCODER ─── */}
       <div className="settings-section settings-section-last">
