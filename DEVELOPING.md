@@ -53,7 +53,7 @@ The codebase is split into two halves around the Electron main/renderer boundary
 dome-festival-delivery-tool/
 ├── main.js                       # Electron main entry — IPC handlers + lifecycle
 ├── preload.js                    # contextBridge exposure (no nodeIntegration!)
-├── dfw_config.json               # Default shipped festival config
+├── presets/                      # Bundled festival presets (DFW + examples)
 ├── examples/                     # Starter configs for other festivals
 ├── ffmpeg/
 │   ├── mac/                      # Static FFmpeg + FFprobe (evermeet.cx)

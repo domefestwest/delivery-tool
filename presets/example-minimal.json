@@ -1,0 +1,43 @@
+{
+  "_example": true,
+  "_comment": "Minimal festival config — the smallest viable example. Copy and rename to {your-festival}_config.json, then edit the values. See README.md and FESTIVALS.md for the full schema.",
+  "festival_name": "Example Fulldome Festival",
+  "festival_short": "EFF",
+  "version": "2027",
+  "contact_email": "submissions@example.org",
+  "website": "https://example.org",
+  "video": {
+    "codec": "libx265",
+    "bit_depth": 10,
+    "pix_fmt": "yuv420p10le",
+    "crf": 18,
+    "preset": "slow",
+    "x265_params": "bframes=8:ref=6:rd=6:subme=7:me=umh:b-adapt=2",
+    "container": "mp4",
+    "allowed_resolutions": [
+      {
+        "label": "4K",
+        "width": 4096,
+        "height": 4096
+      }
+    ],
+    "allowed_framerates": [
+      30
+    ]
+  },
+  "audio": {
+    "preferred_format": "stereo",
+    "accepted_formats": [
+      "5.1",
+      "stereo"
+    ],
+    "sample_rate_khz": 44.1,
+    "ambisonics_supported": false,
+    "stems_required": false,
+    "mux_option_available": true
+  },
+  "delivery": {
+    "folder_name_template": "{FilmTitle}_EFF{Year}",
+    "max_file_size_gb": 50
+  }
+}

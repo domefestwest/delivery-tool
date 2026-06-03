@@ -4,7 +4,7 @@
 
 A free desktop app for filmmakers and festivals. Drop in your image sequence or video master, get back a properly encoded H.265 file with synchronized audio, checksums, and a delivery report — ready to upload to the festival of your choice.
 
-Used by **[Dome Fest West](https://domefestwest.com)** and designed to be adopted by any fulldome festival worldwide. Mac, Windows, and Linux. MIT licensed.
+Ships with bundled presets for participating festivals — pick one from the Preset menu in the app header. Designed to be adopted by any fulldome festival worldwide. Mac, Windows, and Linux. MIT licensed.
 
 **[⬇️ Download installer](https://github.com/domefestwest/delivery-tool/releases/latest)** · [Filmmaker guide](./INSTALL.md) · [Festival organizer guide](./FESTIVALS.md)
 
@@ -14,7 +14,9 @@ Used by **[Dome Fest West](https://domefestwest.com)** and designed to be adopte
 
 ### 🎬 You're a filmmaker submitting to a festival
 
-Your festival should have given you their **config file** (a small `.json` file). Download the app, install it (one-time setup — see [INSTALL.md](./INSTALL.md) for bypassing the unsigned-beta warning), load your festival's config, drag in your film, hit encode. You'll get back a delivery folder ready to upload.
+Download the app, install it (one-time setup — see [INSTALL.md](./INSTALL.md) for bypassing the unsigned-beta warning), pick your festival from the **Preset** menu in the app header, drag in your film, hit encode. You'll get back a delivery folder ready to upload.
+
+The app ships with bundled presets for participating festivals (Dome Fest West, plus example templates). If your festival has its own preset bundled, just pick it from the menu — nothing to download separately. If your festival distributes a custom `.json` config, use **Preset → Custom → Load from file…** to load it.
 
 > **No video encoding knowledge required.** The tool enforces the right settings automatically.
 

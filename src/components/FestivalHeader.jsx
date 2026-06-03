@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 function deadlineState(deadlineISO) {
   if (!deadlineISO) return null;
@@ -10,18 +10,33 @@ function deadlineState(deadlineISO) {
   return { status: 'ok', daysLeft: Math.floor(days), label: `${Math.floor(days)} days until deadline` };
 }
 
-export default function FestivalHeader({ config, depStatus, onLoadConfig }) {
+export default function FestivalHeader({ config, depStatus, onLoadConfig, onPresetChange }) {
   const [showCapModal, setShowCapModal] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [updateStatus, setUpdateStatus] = useState(null);
+  const [presets, setPresets] = useState([]);
+  const [showPresetMenu, setShowPresetMenu] = useState(false);
+  const presetMenuRef = useRef(null);
 
-  // Subscribe to update events from main process
+  // Subscribe to update events + load preset list on mount
   useEffect(() => {
-    // Fetch any cached status (in case the background check already fired)
     window.api.getUpdateStatus().then(s => { if (s) setUpdateStatus(s); });
     const unsub = window.api.onUpdateStatus(s => setUpdateStatus(s));
+    window.api.listPresets().then(setPresets);
     return () => unsub();
   }, []);
+
+  // Close preset menu on outside click
+  useEffect(() => {
+    if (!showPresetMenu) return;
+    const handler = (e) => {
+      if (presetMenuRef.current && !presetMenuRef.current.contains(e.target)) {
+        setShowPresetMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showPresetMenu]);
 
   // No config loaded → show generic tool name. Once a festival config is loaded
   // (DFW by default, or any custom one), show that festival's branding instead.
@@ -103,20 +118,82 @@ export default function FestivalHeader({ config, depStatus, onLoadConfig }) {
 
           <div style={{ width: 1, height: 28, background: '#333' }} />
 
-          <button
-            onClick={handleLoadConfig}
-            style={{
-              background: 'none',
-              border: '1px solid #404040',
-              borderRadius: 5,
-              color: '#999',
-              cursor: 'pointer',
-              fontSize: 12,
-              padding: '4px 10px',
-            }}
-          >
-            Load festival config
-          </button>
+          {/* Preset picker — bundled festival configs + custom-file fallback */}
+          <div style={{ position: 'relative' }} ref={presetMenuRef}>
+            <button
+              onClick={() => setShowPresetMenu(s => !s)}
+              style={{
+                background: 'none',
+                border: '1px solid #404040',
+                borderRadius: 5,
+                color: '#bbb',
+                cursor: 'pointer',
+                fontSize: 12,
+                padding: '4px 10px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+              }}
+              title="Switch between bundled festival presets, or load a custom config file"
+            >
+              🎯 Preset ▾
+            </button>
+
+            {showPresetMenu && (
+              <div className="popover" style={{ left: 0, minWidth: 280 }}>
+                <div className="popover-header">Bundled Festival Presets</div>
+                {presets.filter(p => !p.isExample).map(p => (
+                  <button
+                    key={p.id}
+                    className="popover-item"
+                    onClick={async () => {
+                      const loaded = await window.api.loadPreset(p.id);
+                      if (loaded && !loaded.error) onPresetChange?.(loaded);
+                      setShowPresetMenu(false);
+                    }}
+                  >
+                    <div className="popover-item-title">
+                      {p.short && <span style={{ color: '#ED8B1E', marginRight: 8 }}>{p.short}</span>}
+                      {p.name}
+                    </div>
+                    <div className="popover-item-sub">
+                      {p.version}
+                      {config?.festival_short === p.short && config?.version === p.version && (
+                        <span style={{ color: '#4caf6e', marginLeft: 8 }}>✓ active</span>
+                      )}
+                    </div>
+                  </button>
+                ))}
+                {presets.some(p => p.isExample) && (
+                  <>
+                    <div className="popover-header" style={{ marginTop: 4 }}>Example Templates</div>
+                    {presets.filter(p => p.isExample).map(p => (
+                      <button
+                        key={p.id}
+                        className="popover-item"
+                        onClick={async () => {
+                          const loaded = await window.api.loadPreset(p.id);
+                          if (loaded && !loaded.error) onPresetChange?.(loaded);
+                          setShowPresetMenu(false);
+                        }}
+                      >
+                        <div className="popover-item-title">{p.name}</div>
+                        <div className="popover-item-sub">Template · {p.version}</div>
+                      </button>
+                    ))}
+                  </>
+                )}
+                <div className="popover-header" style={{ marginTop: 4 }}>Custom</div>
+                <button
+                  className="popover-item"
+                  onClick={() => { handleLoadConfig(); setShowPresetMenu(false); }}
+                >
+                  <div className="popover-item-title">📂 Load from file…</div>
+                  <div className="popover-item-sub">Pick a .json config from disk</div>
+                </button>
+              </div>
+            )}
+          </div>
 
           {loadError && (
             <span style={{ color: '#f08080', fontSize: 12 }}>⚠ {loadError}</span>

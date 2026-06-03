@@ -25,6 +25,7 @@ const { zipDeliveryFolder }   = require('./src-main/zip-package');
 const { generateThumbnail, cleanupOldThumbnails } = require('./src-main/preview-generator');
 const { saveProject, loadProject } = require('./src-main/project-io');
 const { checkForUpdate, schedulePeriodicCheck } = require('./src-main/update-checker');
+const presetsLoader           = require('./src-main/presets-loader');
 const settingsStore           = require('./src-main/settings-store');
 const {
   computeMd5,
@@ -76,12 +77,35 @@ function applyDepResult(result) {
   }
 }
 
+/**
+ * Resolve the presets directory — same logic as the FFmpeg bundle path:
+ * production uses process.resourcesPath, dev uses the project root.
+ */
+function getPresetsDir() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'presets')
+    : path.join(__dirname, 'presets');
+}
+
+/**
+ * Load the user's last-used preset, or fall back to the default (DFW).
+ * Returns the festival config object, or null.
+ */
 function loadDefaultConfig() {
-  const configPath = app.isPackaged
-    ? path.join(process.resourcesPath, 'dfw_config.json')
-    : path.join(__dirname, 'dfw_config.json');
+  const dir = getPresetsDir();
   try {
-    return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const settings = settingsStore.readSettings(app.getPath('userData'));
+    const lastPresetId = settings?.lastPresetId;
+    if (lastPresetId) {
+      const config = presetsLoader.loadPreset(dir, lastPresetId);
+      if (!config.error) return config;
+    }
+    const defaultId = presetsLoader.getDefaultPresetId(dir);
+    if (defaultId) {
+      const config = presetsLoader.loadPreset(dir, defaultId);
+      if (!config.error) return config;
+    }
+    return null;
   } catch (err) {
     console.error('[Config] Failed to load default config:', err);
     return null;
@@ -159,6 +183,23 @@ ipcMain.handle('dep:recheck', async () => {
 ipcMain.handle('config:load-default', () => {
   activeConfig = loadDefaultConfig();
   return activeConfig;
+});
+
+// ─── IPC: Festival presets (bundled with the app) ─────────────────────────────
+
+ipcMain.handle('presets:list', () => {
+  return presetsLoader.listPresets(getPresetsDir());
+});
+
+ipcMain.handle('presets:load', (_, presetId) => {
+  const config = presetsLoader.loadPreset(getPresetsDir(), presetId);
+  if (config.error) return config;
+  activeConfig = config;
+  // Remember the choice so the user returns to it on next launch
+  try {
+    settingsStore.updateSettings(app.getPath('userData'), { lastPresetId: presetId });
+  } catch (_) {}
+  return config;
 });
 
 ipcMain.handle('config:load-file', async () => {

@@ -9,6 +9,10 @@ contextBridge.exposeInMainWorld('api', {
   loadDefaultConfig: () => ipcRenderer.invoke('config:load-default'),
   loadConfigFile:    () => ipcRenderer.invoke('config:load-file'),
 
+  // Festival presets (bundled with the app)
+  listPresets:       () => ipcRenderer.invoke('presets:list'),
+  loadPreset:        (id) => ipcRenderer.invoke('presets:load', id),
+
   // Dialogs
   openFolder: (opts) => ipcRenderer.invoke('dialog:open-folder', opts),
   openFile:   (opts) => ipcRenderer.invoke('dialog:open-file', opts),

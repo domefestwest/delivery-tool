@@ -23,6 +23,16 @@ When you give your artists this tool with your festival's config file, every sub
 
 ---
 
+## Two ways to ship your config to artists
+
+1. **Bundle into the app** (preferred). Open a PR adding your `{festival-short}-{year}.json` file to the `presets/` folder of [this repo](https://github.com/domefestwest/delivery-tool). Once merged into the next release, every artist who downloads the installer gets your preset in the **Preset** menu automatically — no extra download for them, no config file you have to host.
+
+2. **Distribute alongside your submission instructions**. Host the `.json` on your festival's website, Google Drive, Dropbox, etc. Artists download it, then load via the app's **Preset → Custom → Load from file…** option. Use this if you don't want to wait for a release cycle, or if your config is festival-private.
+
+Most festivals will want option 1 once they're settled. Option 2 is fine for early iteration.
+
+---
+
 ## Architecture: how a festival adopts this
 
 The whole tool is driven by **one JSON config file** that describes your festival's requirements. To support a different festival, you only need to:

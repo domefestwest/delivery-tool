@@ -39,7 +39,7 @@
       "main.js",
       "preload.js",
       "src-main/**/*",
-      "dfw_config.json",
+      "presets/**/*",
       "node_modules/**/*",
       "!node_modules/electron/dist/**/*",
       "!**/{.eslintrc.js,jest.config.js,.gitignore,.npmignore}"
@@ -48,34 +48,27 @@
       {
         "from": "ffmpeg/mac",
         "to": "ffmpeg/mac",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       },
       {
         "from": "ffmpeg/win",
         "to": "ffmpeg/win",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       },
       {
         "from": "ffmpeg/linux",
         "to": "ffmpeg/linux",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       },
       {
-        "from": "dfw_config.json",
-        "to": "dfw_config.json"
+        "from": "presets",
+        "to": "presets",
+        "filter": ["**/*"]
       },
       {
         "from": "examples",
         "to": "examples",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       }
     ],
     "mac": {

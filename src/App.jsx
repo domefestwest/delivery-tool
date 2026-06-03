@@ -103,10 +103,17 @@ export default function App() {
     const cfg = await window.api.loadConfigFile();
     if (cfg && !cfg.error) {
       setConfig(cfg);
-      // After loading a new festival config, reset to its first allowed resolution
       setSelectedResolutions([cfg.video.allowed_resolutions[0]]);
     }
     return cfg;
+  }, []);
+
+  // Switching to a bundled preset — same state-reset as loading a custom file
+  const handlePresetChange = useCallback((cfg) => {
+    if (cfg && !cfg.error) {
+      setConfig(cfg);
+      setSelectedResolutions([cfg.video.allowed_resolutions[0]]);
+    }
   }, []);
 
   const handleReplayRecent = useCallback((entry) => {
@@ -263,6 +270,7 @@ export default function App() {
         config={config}
         depStatus={depStatus}
         onLoadConfig={handleLoadConfig}
+        onPresetChange={handlePresetChange}
       />
 
       <div className="app-scroll">

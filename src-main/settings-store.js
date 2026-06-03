@@ -23,6 +23,7 @@ const DEFAULTS = {
   studio: '',
   lastOutputDir: '',
   lastSourceDir: '',
+  lastPresetId: '',                  // remembered festival preset (e.g. 'dfw-2027')
   preferGPU: true,
   autoOpenFolderOnComplete: true,
   autoZip: false,
