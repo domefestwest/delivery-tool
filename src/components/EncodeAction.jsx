@@ -55,6 +55,7 @@ export default function EncodeAction({
   const [result, setResult]     = useState(null);            // single result or { batchResults: [] }
   const [error, setError]       = useState(null);
   const [progress, setProgress] = useState(null);
+  const [phase, setPhase]       = useState(null);  // post-encode finalize phase
   const [activeEncoder, setActiveEncoder] = useState(null);
   const [log, setLog]           = useState('');
   const [showLog, setShowLog]   = useState(false);
@@ -109,7 +110,10 @@ export default function EncodeAction({
     const u1 = window.api.onEncodeProgress(d => setProgress(d));
     const u2 = window.api.onEncodeLog(c => setLog(prev => prev + c));
     const u3 = window.api.onEncodeEncoder(d => setActiveEncoder(d));
-    return () => { u1(); u2(); u3(); };
+    const u4 = window.api.onEncodePhase
+      ? window.api.onEncodePhase(d => setPhase(d))
+      : () => {};
+    return () => { u1(); u2(); u3(); u4(); };
   }, []);
 
   // Keyboard shortcuts
@@ -217,7 +221,7 @@ export default function EncodeAction({
   const handleScreenerEncode = async () => {
     if (encoding) return;
     setEncoding(true);
-    setResult(null); setError(null); setProgress(null);
+    setResult(null); setError(null); setProgress(null); setPhase(null);
     setActiveEncoder(null); setLog(''); setElapsedMs(0); setTestResult(null);
 
     const totalFrames = sourceType === 'png'
@@ -253,7 +257,7 @@ export default function EncodeAction({
     if (isScreener) return handleScreenerEncode();
     if (!encodeReady || encoding) return;
     setEncoding(true);
-    setResult(null); setError(null); setProgress(null);
+    setResult(null); setError(null); setProgress(null); setPhase(null);
     setActiveEncoder(null); setLog(''); setElapsedMs(0); setTestResult(null);
 
     const queue = selectedResolutions;
@@ -266,7 +270,7 @@ export default function EncodeAction({
       if (isBatch) {
         setBatchIdx(i);
         setCurrentRes(res);
-        setProgress(null);
+        setProgress(null); setPhase(null);
         setLog(prev => prev + `\n══ Encoding ${i + 1} of ${queue.length}: ${res.label} ══\n`);
       }
       const params = {
@@ -325,10 +329,16 @@ export default function EncodeAction({
     setError('Encode cancelled.');
   };
   const handleOpenFolder = () => result?.deliveryFolder && window.api.openPath(result.deliveryFolder);
+  const [zipping, setZipping] = useState(false);
   const handleZipNow = async () => {
-    if (!result?.deliveryFolder) return;
-    const z = await window.api.zipDelivery(result.deliveryFolder);
-    setResult({ ...result, zip: z });
+    if (!result?.deliveryFolder || zipping) return;
+    setZipping(true);
+    try {
+      const z = await window.api.zipDelivery(result.deliveryFolder);
+      setResult({ ...result, zip: z });
+    } finally {
+      setZipping(false);
+    }
   };
 
   // Build a context summary for the debug log
@@ -488,6 +498,13 @@ export default function EncodeAction({
               <span style={{ color: '#888', fontSize: 12 }}>{activeEncoder.label}</span>
             </div>
           )}
+          {/* Post-encode finalize phase — shown when ffmpeg has finished but we're
+              still hashing MD5s / verifying / packaging. This prevents the "stuck
+              at 99%" feeling on large 8K masters where MD5 alone takes 30–90s. */}
+          {phase ? (
+            <FinalizePhaseBanner phase={phase} />
+          ) : (
+          <>
           <div className="encode-progress-meta">
             <span>
               {progress?.frame != null && (
@@ -508,6 +525,8 @@ export default function EncodeAction({
           <div className="progress-bar-wrap">
             <div className="progress-bar-fill" style={{ width: progressPct != null ? `${progressPct}%` : '2%' }} />
           </div>
+          </>
+          )}
           <div className="encode-progress-footer">
             <span>
               {formatElapsed(elapsedMs)} elapsed
@@ -614,7 +633,14 @@ export default function EncodeAction({
           <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
             <button className="btn btn-primary" onClick={handleOpenFolder}>📁 Open Folder</button>
             {!result.zip?.ok && (
-              <button className="btn btn-secondary" onClick={handleZipNow}>📦 Create ZIP</button>
+              <button
+                className="btn btn-secondary"
+                onClick={handleZipNow}
+                disabled={zipping}
+                title={zipping ? 'Compressing the delivery folder — please wait' : 'Compress the delivery folder into a single .zip'}
+              >
+                {zipping ? '⏳ Creating ZIP…' : '📦 Create ZIP'}
+              </button>
             )}
             {result.zip?.ok && (
               <button className="btn btn-secondary" onClick={() => window.api.showInFolder(result.zip.zipPath)}>
@@ -622,7 +648,7 @@ export default function EncodeAction({
               </button>
             )}
             <button className="btn btn-secondary"
-              onClick={() => { setResult(null); setLog(''); setProgress(null); setActiveEncoder(null); }}>
+              onClick={() => { setResult(null); setLog(''); setProgress(null); setPhase(null); setActiveEncoder(null); }}>
               New Encode
             </button>
             <button className="btn btn-ghost" onClick={handleSaveLog}
@@ -630,6 +656,31 @@ export default function EncodeAction({
               💾 Save log
             </button>
           </div>
+
+          {/* In-progress banner — without this, the button just sits there for a minute
+              and looks broken on large 8K delivery folders. */}
+          {zipping && (
+            <div style={{
+              marginTop: 10,
+              padding: '10px 12px',
+              background: 'rgba(237, 139, 30, 0.08)',
+              border: '1px solid rgba(237, 139, 30, 0.3)',
+              borderRadius: 6,
+              fontSize: 12,
+              color: '#e8e8e8',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+            }}>
+              <span style={{ fontSize: 16 }}>📦</span>
+              <div>
+                <div style={{ fontWeight: 600, color: '#ED8B1E' }}>Creating ZIP archive…</div>
+                <div style={{ color: '#aaa', marginTop: 2 }}>
+                  This usually takes 1–3 minutes for a full 8K delivery. The button will say <em>Reveal ZIP</em> when it's ready.
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Collapsible report */}
           <details style={{ marginTop: 14 }}>
@@ -711,7 +762,7 @@ export default function EncodeAction({
 
           <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
             <button className="btn btn-secondary"
-              onClick={() => { setResult(null); setLog(''); setProgress(null); setActiveEncoder(null); }}>
+              onClick={() => { setResult(null); setLog(''); setProgress(null); setPhase(null); setActiveEncoder(null); }}>
               New Encode
             </button>
             <button className="btn btn-ghost" onClick={handleSaveLog}>
@@ -720,6 +771,57 @@ export default function EncodeAction({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── FinalizePhaseBanner ────────────────────────────────────────────────────
+// Shown during the post-encode finalize phase (audio hashing, video MD5,
+// verification, loudness analysis, zipping). Replaces the frame-counter
+// progress bar so the user understands the encode is done and the tool is
+// doing real, slow work — not stuck.
+function FinalizePhaseBanner({ phase }) {
+  const pct = (phase.total > 0 && phase.step != null)
+    ? Math.min(100, Math.round((phase.step / phase.total) * 100))
+    : null;
+
+  const isHash = phase.phase === 'video-md5' || phase.phase === 'audio';
+
+  return (
+    <div style={{
+      background: 'rgba(237, 139, 30, 0.08)',
+      border: '1px solid rgba(237, 139, 30, 0.3)',
+      borderRadius: 6,
+      padding: '12px 14px',
+      marginTop: 8,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+        <span style={{ fontSize: 16 }}>{isHash ? '🔐' : '✓'}</span>
+        <span style={{ color: '#ED8B1E', fontSize: 13, fontWeight: 700, letterSpacing: '0.04em' }}>
+          FINALIZING DELIVERY
+        </span>
+      </div>
+      <div style={{ color: '#e8e8e8', fontSize: 13, marginBottom: 8 }}>
+        {phase.label || 'Working…'}
+      </div>
+      {pct != null && (
+        <>
+          <div className="progress-bar-wrap" style={{ marginBottom: 4 }}>
+            <div className="progress-bar-fill" style={{ width: `${pct}%`, background: '#ED8B1E' }} />
+          </div>
+          <div style={{ color: '#888', fontSize: 11 }}>{pct}%</div>
+        </>
+      )}
+      {pct == null && (
+        // Indeterminate — just show the pulse so it's clearly active
+        <div className="progress-bar-wrap">
+          <div className="progress-bar-fill"
+               style={{ width: '30%', background: '#ED8B1E', animation: 'pulse-glow 1.4s ease-in-out infinite' }} />
+        </div>
+      )}
+      <div style={{ color: '#777', fontSize: 11, marginTop: 8, fontStyle: 'italic' }}>
+        The encode itself is done — checksums and verification on large files take a moment.
+      </div>
     </div>
   );
 }

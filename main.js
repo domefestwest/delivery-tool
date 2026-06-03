@@ -935,18 +935,42 @@ ipcMain.handle('encode:start', async (_, encodeParams) => {
         return;
       }
 
+      // ── Post-encode finalize phase ──────────────────────────────────────
+      // Emit phase events so the UI doesn't appear stuck at 99% while we
+      // hash MD5s, verify output, and analyze loudness on large files.
+      const emitPhase = (info) => {
+        mainWindow?.webContents.send('encode:phase', info);
+      };
+
+      emitPhase({ phase: 'audio', label: 'Processing audio…', step: 0, total: 1 });
       const audioResult = await processAudio({
         audioMode, audioFiles, audioInterleaved,
         audioFolder, filmTitle: safeName,
         muxAudio, outputVideoPath,
         ffmpegPath: activeFFmpegPath,
         ffprobePath: activeFFprobePath,
+        onPhase: ({ step, total, label }) =>
+          emitPhase({ phase: 'audio', label, step, total }),
       });
 
       const videoStat = fs.existsSync(outputVideoPath) ? fs.statSync(outputVideoPath) : null;
-      const videoMd5 = videoStat ? await computeMd5(outputVideoPath).catch(() => null) : null;
+      emitPhase({
+        phase: 'video-md5',
+        label: 'Computing video MD5 checksum (large files take 30–90s)…',
+        step: 0,
+        total: videoStat?.size || 0,
+      });
+      const videoMd5 = videoStat ? await computeMd5(outputVideoPath, ({ bytesHashed, totalBytes }) =>
+        emitPhase({
+          phase: 'video-md5',
+          label: 'Computing video MD5 checksum…',
+          step: bytesHashed,
+          total: totalBytes,
+        })
+      ).catch(() => null) : null;
 
       // OUTPUT VERIFICATION (post-encode)
+      emitPhase({ phase: 'verify', label: 'Verifying output spec…' });
       let verification = null;
       try {
         verification = await probeAndVerify(activeFFprobePath, outputVideoPath, {
@@ -965,6 +989,7 @@ ipcMain.handle('encode:start', async (_, encodeParams) => {
       // numbers for multi-stem audio — e.g. measuring just LFE.)
       let loudness = null;
       if (audioResult.stems && audioResult.stems.length > 0) {
+        emitPhase({ phase: 'loudness', label: 'Analyzing audio loudness…' });
         try {
           const mixResult = await analyzeMix({
             ffmpegPath: activeFFmpegPath,
@@ -1014,12 +1039,14 @@ ipcMain.handle('encode:start', async (_, encodeParams) => {
         ffmpegSource: depCheckResult?.source,
       });
 
+      emitPhase({ phase: 'report', label: 'Writing delivery report…' });
       const reportPath = path.join(deliveryFolder, 'delivery_report.txt');
       fs.writeFileSync(reportPath, report, 'utf8');
 
       // AUTO-ZIP if requested
       let zipResult = null;
       if (autoZip) {
+        emitPhase({ phase: 'zip', label: 'Creating delivery ZIP archive…' });
         mainWindow?.webContents.send('encode:log', '\nCreating delivery ZIP…\n');
         zipResult = await zipDeliveryFolder(deliveryFolder);
         if (zipResult.error) {
@@ -1193,7 +1220,21 @@ ipcMain.handle('screener:start', async (_, params) => {
       }
 
       const videoStat = fs.existsSync(outputVideoPath) ? fs.statSync(outputVideoPath) : null;
-      const videoMd5 = videoStat ? await computeMd5(outputVideoPath).catch(() => null) : null;
+      // Screener MD5: smaller files than masters but still worth showing progress for.
+      mainWindow?.webContents.send('encode:phase', {
+        phase: 'video-md5',
+        label: 'Computing screener MD5 checksum…',
+        step: 0,
+        total: videoStat?.size || 0,
+      });
+      const videoMd5 = videoStat ? await computeMd5(outputVideoPath, ({ bytesHashed, totalBytes }) =>
+        mainWindow?.webContents.send('encode:phase', {
+          phase: 'video-md5',
+          label: 'Computing screener MD5 checksum…',
+          step: bytesHashed,
+          total: totalBytes,
+        })
+      ).catch(() => null) : null;
 
       // Minimal report — screeners don't need the full dome-master delivery report
       const lines = [

@@ -90,6 +90,13 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('encode:progress', listener);
     return () => ipcRenderer.removeListener('encode:progress', listener);
   },
+  // Post-encode finalize phases (audio hashing, video MD5, verify, loudness, zip)
+  // so the UI doesn't appear stuck at 99% during the multi-minute checksum step.
+  onEncodePhase: (cb) => {
+    const listener = (_, data) => cb(data);
+    ipcRenderer.on('encode:phase', listener);
+    return () => ipcRenderer.removeListener('encode:phase', listener);
+  },
   onEncodeLog: (cb) => {
     const listener = (_, data) => cb(data);
     ipcRenderer.on('encode:log', listener);

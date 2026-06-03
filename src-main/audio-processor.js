@@ -49,7 +49,9 @@ async function processAudio(req) {
   const {
     audioMode, audioFiles, audioInterleaved, audioFolder,
     filmTitle, muxAudio, outputVideoPath, ffmpegPath, ffprobePath,
+    onPhase,  // optional callback: ({step, total, label}) for UI progress
   } = req;
+  const emit = (info) => { try { if (typeof onPhase === 'function') onPhase(info); } catch (_) {} };
 
   const warnings = [];
 
@@ -64,11 +66,16 @@ async function processAudio(req) {
 
   // ── Stems mode ───────────────────────────────────────────────────────────
   if (audioMode === 'stems') {
+    const total = (audioFiles || []).length;
+    let i = 0;
     for (const { channel, filePath } of (audioFiles || [])) {
+      i++;
+      emit({ step: i, total, label: `Normalizing audio stem ${channel} (${i}/${total})` });
       const destName = `${filmTitle}_${channel}.wav`;
       const destPath = path.join(audioFolder, destName);
       await spawnAndWait(ffmpegPath,
         buildStemNormalizeArgs({ inputPath: filePath, outputPath: destPath }));
+      emit({ step: i, total, label: `Hashing audio stem ${channel} (${i}/${total})` });
       const md5 = await computeMd5(destPath).catch(() => null);
       stems.push({ channel, path: destPath, filename: destName, md5 });
     }
@@ -90,10 +97,14 @@ async function processAudio(req) {
       for (const ch of channelOrder) {
         stemPaths[ch] = path.join(audioFolder, `${filmTitle}_${ch}.wav`);
       }
+      emit({ step: 0, total: channelOrder.length, label: 'Splitting 5.1 interleaved into stems' });
       await spawnAndWait(ffmpegPath,
         buildSplitStemsArgs({ inputPath: audioInterleaved, stemPaths }));
 
+      let i = 0;
       for (const ch of channelOrder) {
+        i++;
+        emit({ step: i, total: channelOrder.length, label: `Hashing audio stem ${ch} (${i}/${channelOrder.length})` });
         const destPath = stemPaths[ch];
         const md5 = await computeMd5(destPath).catch(() => null);
         stems.push({
@@ -103,10 +114,12 @@ async function processAudio(req) {
       }
     } else {
       // Stereo
+      emit({ step: 1, total: 1, label: 'Normalizing stereo audio' });
       const destName = `${filmTitle}_Stereo.wav`;
       const destPath = path.join(audioFolder, destName);
       await spawnAndWait(ffmpegPath,
         buildStemNormalizeArgs({ inputPath: audioInterleaved, outputPath: destPath }));
+      emit({ step: 1, total: 1, label: 'Hashing stereo audio' });
       const md5 = await computeMd5(destPath).catch(() => null);
       stems.push({ channel: 'Stereo', path: destPath, filename: destName, md5 });
     }

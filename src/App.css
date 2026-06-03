@@ -457,3 +457,9 @@
 .badge-warn  { background: rgba(232,184,75,0.15); color: var(--yellow); }
 .badge-error { background: rgba(224,82,82,0.15); color: var(--red); }
 .badge-info  { background: rgba(74,158,222,0.15); color: var(--blue); }
+
+/* Indeterminate pulse for finalize phase progress bar */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 1; }
+}

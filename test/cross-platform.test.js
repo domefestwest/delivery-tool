@@ -1033,6 +1033,126 @@ test('parseDeliveryReport: missing video filename → error', () => {
   assert.ok(r.error);
 });
 
+test('verifyDelivery: end-to-end against a real folder, MD5 pass', async () => {
+  // Build a tiny "delivery folder" on disk with a video file + delivery_report.txt,
+  // then verify it. The MD5 in the report must match what verify computes from
+  // the file. This catches regressions where parser/verifier shapes diverge.
+  const { verifyDelivery } = require('../src-main/verify-delivery');
+  const { computeMd5 } = require('../src-main/utils');
+  const { buildDeliveryReport } = require('../src-main/delivery-report');
+
+  const tmpDir = path.join(os.tmpdir(), 'verify-test-' + Date.now());
+  fs.mkdirSync(tmpDir, { recursive: true });
+  fs.mkdirSync(path.join(tmpDir, 'video'), { recursive: true });
+
+  // Create a fake "video" file (any bytes — verify just MD5s it)
+  const videoPath = path.join(tmpDir, 'video', 'Fake_Film_4K.mp4');
+  fs.writeFileSync(videoPath, Buffer.from('not really a video, just bytes for hashing'));
+  const realMd5 = await computeMd5(videoPath);
+
+  // Write a delivery_report.txt with the *real* MD5 + matching filename
+  const report = buildDeliveryReport({
+    filmTitle: 'Fake Film',
+    config: { festival_name: 'TestFest', version: '2027', contact_email: '', website: '',
+              video: { crf: 18, preset: 'medium' } },
+    resolution: { width: 4096, height: 4096, label: '4K' },
+    frameRate: 30, sourceType: 'video',
+    encodeParams: { sourceCodec: 'prores', sourceFps: 30 },
+    outputFilename: 'Fake_Film_4K.mp4',
+    videoSizeBytes: fs.statSync(videoPath).size,
+    videoMd5: realMd5,
+    audioResult: { mode: 'none', stems: [] },
+    encoderLabel: 'libx265', encoderName: 'libx265', isGPU: false,
+    appVersion: '0.17.1', ffmpegVersion: '8', ffmpegSource: 'bundled',
+  });
+  fs.writeFileSync(path.join(tmpDir, 'delivery_report.txt'), report, 'utf8');
+
+  // Run verify (no ffprobePath → spec-check is skipped, MD5 still runs)
+  const result = await verifyDelivery({ folderPath: tmpDir, ffprobePath: null });
+
+  assert.ok(!result.error, `verify errored: ${result.error}`);
+  const videoExistsCheck = result.checks.find(c => c.id === 'video-exists');
+  const md5Check = result.checks.find(c => c.id === 'video-md5');
+  assert.ok(videoExistsCheck, 'should have video-exists check');
+  assert.strictEqual(videoExistsCheck.status, 'pass');
+  assert.ok(md5Check, 'should have video-md5 check');
+  assert.strictEqual(md5Check.status, 'pass', `MD5 should match; details: ${md5Check.detail}`);
+
+  // Cleanup
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});
+
+test('verifyDelivery: detects MD5 mismatch (corrupted file)', async () => {
+  const { verifyDelivery } = require('../src-main/verify-delivery');
+  const { buildDeliveryReport } = require('../src-main/delivery-report');
+
+  const tmpDir = path.join(os.tmpdir(), 'verify-test-bad-' + Date.now());
+  fs.mkdirSync(tmpDir, { recursive: true });
+  fs.mkdirSync(path.join(tmpDir, 'video'), { recursive: true });
+
+  const videoPath = path.join(tmpDir, 'video', 'Corrupted_4K.mp4');
+  fs.writeFileSync(videoPath, Buffer.from('THE FILE THAT WAS DELIVERED'));
+
+  const report = buildDeliveryReport({
+    filmTitle: 'Corrupted', config: { festival_name: 'F', version: '1', contact_email: '', website: '',
+              video: { crf: 18, preset: 'medium' } },
+    resolution: { width: 4096, height: 4096, label: '4K' }, frameRate: 30, sourceType: 'video',
+    encodeParams: { sourceCodec: 'prores', sourceFps: 30 },
+    outputFilename: 'Corrupted_4K.mp4',
+    videoSizeBytes: 100, videoMd5: 'wrongmd5deadbeef',  // intentionally bad
+    audioResult: { mode: 'none', stems: [] },
+    encoderLabel: 'libx265', encoderName: 'libx265', isGPU: false,
+    appVersion: '0.17.1', ffmpegVersion: '8', ffmpegSource: 'bundled',
+  });
+  fs.writeFileSync(path.join(tmpDir, 'delivery_report.txt'), report, 'utf8');
+
+  const result = await verifyDelivery({ folderPath: tmpDir, ffprobePath: null });
+  const md5Check = result.checks.find(c => c.id === 'video-md5');
+  assert.strictEqual(md5Check.status, 'fail');
+  assert.strictEqual(result.overall, 'fail');
+
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});
+
+test('verifyDelivery: missing video file → fail', async () => {
+  const { verifyDelivery } = require('../src-main/verify-delivery');
+  const { buildDeliveryReport } = require('../src-main/delivery-report');
+
+  const tmpDir = path.join(os.tmpdir(), 'verify-test-missing-' + Date.now());
+  fs.mkdirSync(tmpDir, { recursive: true });
+  // No video file written
+
+  const report = buildDeliveryReport({
+    filmTitle: 'Missing', config: { festival_name: 'F', version: '1', contact_email: '', website: '',
+              video: { crf: 18, preset: 'medium' } },
+    resolution: { width: 4096, height: 4096, label: '4K' }, frameRate: 30, sourceType: 'video',
+    encodeParams: { sourceCodec: 'prores', sourceFps: 30 },
+    outputFilename: 'Missing_4K.mp4',
+    videoSizeBytes: 100, videoMd5: 'abc',
+    audioResult: { mode: 'none', stems: [] },
+    encoderLabel: 'libx265', encoderName: 'libx265', isGPU: false,
+    appVersion: '0.17.1', ffmpegVersion: '8', ffmpegSource: 'bundled',
+  });
+  fs.writeFileSync(path.join(tmpDir, 'delivery_report.txt'), report, 'utf8');
+
+  const result = await verifyDelivery({ folderPath: tmpDir, ffprobePath: null });
+  const existsCheck = result.checks.find(c => c.id === 'video-exists');
+  assert.strictEqual(existsCheck.status, 'fail');
+  assert.strictEqual(result.overall, 'fail');
+
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});
+
+test('verifyDelivery: folder with no delivery_report.txt → error', async () => {
+  const { verifyDelivery } = require('../src-main/verify-delivery');
+  const tmpDir = path.join(os.tmpdir(), 'verify-test-noreport-' + Date.now());
+  fs.mkdirSync(tmpDir, { recursive: true });
+  const result = await verifyDelivery({ folderPath: tmpDir, ffprobePath: null });
+  assert.ok(result.error, 'should error when no delivery_report.txt present');
+  assert.ok(/delivery_report\.txt/i.test(result.error));
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});
+
 test('parseDeliveryReport: extracts 10-bit pix_fmt from bit depth line', () => {
   const text = buildDeliveryReport({
     filmTitle: 'X',

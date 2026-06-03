@@ -30,8 +30,11 @@ export default function VerifyDeliveryPanel() {
   }, []);
 
   const handlePick = useCallback(async () => {
-    const r = await window.api.openFolder({ title: 'Pick a delivery folder to verify' });
-    if (r && !r.canceled && r.path) runVerify(r.path);
+    // window.api.openFolder resolves to a string path (or null if cancelled).
+    // Earlier code incorrectly destructured {canceled, path} so nothing happened
+    // after picking a folder.
+    const picked = await window.api.openFolder({ title: 'Pick a delivery folder to verify' });
+    if (picked && typeof picked === 'string') runVerify(picked);
   }, [runVerify]);
 
   const handleDrop = useCallback((e) => {

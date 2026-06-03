@@ -223,13 +223,19 @@ export default function EncodePanel({
     if (result?.deliveryFolder) window.api.openPath(result.deliveryFolder);
   };
 
+  const [zipping, setZipping] = useState(false);
   const handleZipNow = async () => {
-    if (!result?.deliveryFolder) return;
+    if (!result?.deliveryFolder || zipping) return;
+    setZipping(true);
     setLog(prev => prev + '\nCreating ZIP…\n');
-    const z = await window.api.zipDelivery(result.deliveryFolder);
-    if (z.error) setLog(prev => prev + `ZIP error: ${z.error}\n`);
-    else setLog(prev => prev + `ZIP created: ${z.zipPath} (${formatBytes(z.sizeBytes)})\n`);
-    setResult({ ...result, zip: z });
+    try {
+      const z = await window.api.zipDelivery(result.deliveryFolder);
+      if (z.error) setLog(prev => prev + `ZIP error: ${z.error}\n`);
+      else setLog(prev => prev + `ZIP created: ${z.zipPath} (${formatBytes(z.sizeBytes)})\n`);
+      setResult({ ...result, zip: z });
+    } finally {
+      setZipping(false);
+    }
   };
 
   const progressPct = progress?.frame && progress?.totalFrames
@@ -594,10 +600,31 @@ export default function EncodePanel({
             )}
           </div>
 
+          {zipping && (
+            <div style={{
+              marginBottom: 12, padding: '10px 12px',
+              background: 'rgba(237, 139, 30, 0.08)',
+              border: '1px solid rgba(237, 139, 30, 0.3)',
+              borderRadius: 6, fontSize: 12, color: '#e8e8e8',
+              display: 'flex', alignItems: 'center', gap: 10,
+            }}>
+              <span style={{ fontSize: 16 }}>📦</span>
+              <div>
+                <div style={{ fontWeight: 600, color: '#ED8B1E' }}>Creating ZIP archive…</div>
+                <div style={{ color: '#aaa', marginTop: 2 }}>Typically 1–3 minutes for an 8K delivery. Hang on.</div>
+              </div>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
             <button className="btn btn-primary" onClick={handleOpenFolder}>📁 Open Delivery Folder</button>
             {!result.zip?.ok && (
-              <button className="btn btn-secondary" onClick={handleZipNow}>📦 Create ZIP</button>
+              <button
+                className="btn btn-secondary"
+                onClick={handleZipNow}
+                disabled={zipping}
+              >
+                {zipping ? '⏳ Creating ZIP…' : '📦 Create ZIP'}
+              </button>
             )}
             {result.zip?.ok && (
               <button className="btn btn-secondary" onClick={() => window.api.showInFolder(result.zip.zipPath)}>

@@ -44,12 +44,37 @@ function sanitizeFilmTitle(title) {
 
 // ─── MD5 checksum (streaming, for large files) ───────────────────────────────
 
-function computeMd5(filePath) {
+/**
+ * Compute MD5 of a file. Optionally call onProgress({bytesHashed, totalBytes})
+ * periodically so the UI can show real progress for large files (8K masters
+ * can take 30–60s to hash).
+ */
+function computeMd5(filePath, onProgress) {
   return new Promise((resolve, reject) => {
     const hash = crypto.createHash('md5');
     const stream = fs.createReadStream(filePath);
-    stream.on('data', d => hash.update(d));
-    stream.on('end', () => resolve(hash.digest('hex')));
+    let bytesHashed = 0;
+    let totalBytes = 0;
+    try { totalBytes = fs.statSync(filePath).size; } catch (_) {}
+    let lastReportMs = 0;
+    stream.on('data', d => {
+      hash.update(d);
+      if (typeof onProgress === 'function') {
+        bytesHashed += d.length;
+        const now = Date.now();
+        // Throttle to ~4 reports/sec so we don't flood IPC
+        if (now - lastReportMs > 250 || bytesHashed === totalBytes) {
+          lastReportMs = now;
+          try { onProgress({ bytesHashed, totalBytes }); } catch (_) {}
+        }
+      }
+    });
+    stream.on('end', () => {
+      if (typeof onProgress === 'function' && totalBytes > 0) {
+        try { onProgress({ bytesHashed: totalBytes, totalBytes }); } catch (_) {}
+      }
+      resolve(hash.digest('hex'));
+    });
     stream.on('error', reject);
   });
 }
