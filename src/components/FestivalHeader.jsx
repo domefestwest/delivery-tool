@@ -10,7 +10,7 @@ function deadlineState(deadlineISO) {
   return { status: 'ok', daysLeft: Math.floor(days), label: `${Math.floor(days)} days until deadline` };
 }
 
-export default function FestivalHeader({ config, depStatus, onLoadConfig, onPresetChange }) {
+export default function FestivalHeader({ config, depStatus, onLoadConfig, onPresetChange, verifyMode }) {
   const [showCapModal, setShowCapModal] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [updateStatus, setUpdateStatus] = useState(null);
@@ -211,8 +211,27 @@ export default function FestivalHeader({ config, depStatus, onLoadConfig, onPres
           )}
         </div>
 
-        {/* Right cluster: update badge + FFmpeg status */}
+        {/* Right cluster: verify-mode chip + update badge + FFmpeg status */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {verifyMode && (
+            <button
+              onClick={() => window.api.disableVerifyMode && window.api.disableVerifyMode()}
+              title="Festival Verify Mode is on. Click to turn off."
+              style={{
+                background: 'rgba(108,71,184,0.18)',
+                border: '1px solid rgba(108,71,184,0.45)',
+                borderRadius: 5,
+                color: '#b69bff',
+                fontSize: 11,
+                fontWeight: 700,
+                padding: '4px 9px',
+                cursor: 'pointer',
+                letterSpacing: '0.04em',
+              }}
+            >
+              🏛 Verify Mode
+            </button>
+          )}
           {updateStatus?.hasUpdate && (
             <a
               href={updateStatus.release?.htmlUrl || '#'}

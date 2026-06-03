@@ -972,6 +972,87 @@ test('diagnoseSource: 1080p source + strict-8K-only festival → neither', () =>
 });
 
 // ════════════════════════════════════════════════════════════════════════════
+// Verify Delivery — parse delivery_report.txt
+// ════════════════════════════════════════════════════════════════════════════
+
+const { parseDeliveryReport } = require('../src-main/verify-delivery');
+const { buildDeliveryReport } = require('../src-main/delivery-report');
+
+section('Verify Delivery — report parsing');
+
+test('parseDeliveryReport: rejects empty input', () => {
+  const r = parseDeliveryReport('');
+  assert.ok(r.error);
+});
+
+test('parseDeliveryReport: round-trip from buildDeliveryReport', () => {
+  const text = buildDeliveryReport({
+    filmTitle: 'Test Film',
+    artistName: 'Jane Doe',
+    config: { festival_name: 'Test Fest', version: '2027', contact_email: 'a@b.c', website: 'b.c' },
+    resolution: { width: 8192, height: 8192, label: '8K' },
+    frameRate: 30,
+    sourceType: 'png',
+    sourceBitDepth: 16,
+    encodeParams: { totalFrames: 5400 },
+    outputFilename: 'Test_Film_8K.mp4',
+    videoSizeBytes: 1234567890,
+    videoMd5: 'abc123def456',
+    audioResult: { mode: '5.1', stems: [
+      { channel: 'L',   filename: 'tf_L.wav',   md5: 'aaa' },
+      { channel: 'R',   filename: 'tf_R.wav',   md5: 'bbb' },
+      { channel: 'C',   filename: 'tf_C.wav',   md5: 'ccc' },
+      { channel: 'LFE', filename: 'tf_LFE.wav', md5: 'ddd' },
+      { channel: 'Ls',  filename: 'tf_Ls.wav',  md5: 'eee' },
+      { channel: 'Rs',  filename: 'tf_Rs.wav',  md5: 'fff' },
+    ]},
+    encoderLabel: 'Apple VideoToolbox (GPU)',
+    encoderName: 'hevc_videotoolbox',
+    isGPU: true,
+    appVersion: '0.17.0',
+    ffmpegVersion: '8.1.1',
+    ffmpegSource: 'bundled',
+  });
+  const parsed = parseDeliveryReport(text);
+  assert.ok(!parsed.error, 'should parse without error');
+  assert.strictEqual(parsed.video.outputFile, 'Test_Film_8K.mp4');
+  assert.strictEqual(parsed.video.md5, 'abc123def456');
+  assert.strictEqual(parsed.video.width, 8192);
+  assert.strictEqual(parsed.video.height, 8192);
+  assert.strictEqual(parsed.video.resolutionLabel, '8K');
+  assert.strictEqual(parsed.video.frameRate, 30);
+  assert.strictEqual(parsed.audio.stems.length, 6);
+  assert.strictEqual(parsed.audio.stems[0].channel, 'L');
+  assert.strictEqual(parsed.audio.stems[0].md5, 'aaa');
+  assert.strictEqual(parsed.audio.stems[3].channel, 'LFE');
+  assert.strictEqual(parsed.tool.version, 'v0.17.0');
+});
+
+test('parseDeliveryReport: missing video filename → error', () => {
+  const r = parseDeliveryReport('Some random text\nwith no recognizable fields\n');
+  assert.ok(r.error);
+});
+
+test('parseDeliveryReport: extracts 10-bit pix_fmt from bit depth line', () => {
+  const text = buildDeliveryReport({
+    filmTitle: 'X',
+    config: {
+      festival_name: 'X', version: '1', contact_email: '', website: '',
+      video: { crf: 18, preset: 'medium' },
+    },
+    resolution: { width: 4096, height: 4096, label: '4K' },
+    frameRate: 30, sourceType: 'video',
+    encodeParams: { sourceCodec: 'prores', sourceFps: 30 },
+    outputFilename: 'x.mp4', videoSizeBytes: 100, videoMd5: 'm',
+    audioResult: { mode: 'none', stems: [] },
+    encoderLabel: 'libx265', encoderName: 'libx265', isGPU: false,
+    appVersion: '0.17.0', ffmpegVersion: '8', ffmpegSource: 'bundled',
+  });
+  const parsed = parseDeliveryReport(text);
+  assert.strictEqual(parsed.video.pixFmt, 'yuv420p10le');
+});
+
+// ════════════════════════════════════════════════════════════════════════════
 // SUMMARY
 // ════════════════════════════════════════════════════════════════════════════
 console.log('\n' + '═'.repeat(64));

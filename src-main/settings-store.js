@@ -29,6 +29,10 @@ const DEFAULTS = {
   autoZip: false,
   notifyOnComplete: true,
   preventSleepDuringEncode: true,
+  // Festival Verify Mode — hidden expert mode for festival coordinators verifying
+  // received deliveries. Toggled from the View menu (View → Festival Tools →
+  // Verify Delivery Mode). Filmmakers never need this.
+  festivalVerifyEnabled: false,
   recentEncodes: [],
 };
 

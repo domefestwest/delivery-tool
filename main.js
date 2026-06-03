@@ -5,7 +5,7 @@
  * All business logic lives in src-main/* modules.
  */
 
-const { app, BrowserWindow, ipcMain, dialog, shell, Notification, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell, Notification, powerSaveBlocker } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -24,6 +24,7 @@ const { analyzeLoudness, classifyLoudness, analyzeMix } = require('./src-main/lo
 const { zipDeliveryFolder }   = require('./src-main/zip-package');
 const { generateThumbnail, cleanupOldThumbnails } = require('./src-main/preview-generator');
 const { saveProject, loadProject } = require('./src-main/project-io');
+const { parseDeliveryReport, verifyDelivery, buildVerificationReport } = require('./src-main/verify-delivery');
 const { checkForUpdate, schedulePeriodicCheck } = require('./src-main/update-checker');
 const presetsLoader           = require('./src-main/presets-loader');
 const settingsStore           = require('./src-main/settings-store');
@@ -139,6 +140,71 @@ function createWindow() {
   }
 
   mainWindow.on('closed', () => { mainWindow = null; });
+}
+
+// ─── Application menu ────────────────────────────────────────────────────────
+// Includes the discreet "Festival Tools → Verify Delivery Mode" toggle.
+// Festival coordinators are told to find it in the View menu. Filmmakers
+// generally never look there, so it stays out of the main UI.
+
+function buildAppMenu() {
+  const settings = settingsStore.readSettings(app.getPath('userData'));
+  const verifyOn = !!settings.festivalVerifyEnabled;
+
+  const isMac = platform.isMac();
+  const template = [
+    ...(isMac ? [{ role: 'appMenu' }] : []),
+    { role: 'fileMenu' },
+    { role: 'editMenu' },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+        { type: 'separator' },
+        {
+          label: 'Festival Tools',
+          submenu: [
+            {
+              label: 'Verify Delivery Mode',
+              type: 'checkbox',
+              checked: verifyOn,
+              click: (menuItem) => {
+                const enabled = menuItem.checked;
+                settingsStore.updateSettings(app.getPath('userData'), { festivalVerifyEnabled: enabled });
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                  mainWindow.webContents.send('verify:mode-changed', { enabled });
+                }
+              },
+            },
+          ],
+        },
+      ],
+    },
+    { role: 'windowMenu' },
+    {
+      role: 'help',
+      submenu: [
+        {
+          label: 'Open GitHub Repository',
+          click: () => shell.openExternal('https://github.com/domefestwest/delivery-tool'),
+        },
+        {
+          label: 'Report an Issue',
+          click: () => shell.openExternal('https://github.com/domefestwest/delivery-tool/issues'),
+        },
+      ],
+    },
+  ];
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 // ─── Power save blocker helpers ───────────────────────────────────────────────
@@ -501,6 +567,46 @@ ipcMain.handle('settings:read', () => {
 
 ipcMain.handle('settings:update', (_, partial) => {
   return settingsStore.updateSettings(app.getPath('userData'), partial);
+});
+
+// ─── IPC: Festival Verify Mode ───────────────────────────────────────────────
+
+ipcMain.handle('verify:run', async (_, { folderPath }) => {
+  if (!activeFFprobePath) {
+    return { error: 'FFprobe not available. Run dependency check first.' };
+  }
+  try {
+    return await verifyDelivery({ folderPath, ffprobePath: activeFFprobePath });
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('verify:save-report', async (_, { result }) => {
+  if (!result || result.error) return { error: 'Nothing to save' };
+  const defaultPath = path.join(result.folderPath || '', 'verification_report.txt');
+  const save = await dialog.showSaveDialog(mainWindow, {
+    title: 'Save verification report',
+    defaultPath,
+    filters: [{ name: 'Text', extensions: ['txt'] }],
+  });
+  if (save.canceled || !save.filePath) return { canceled: true };
+  try {
+    const text = buildVerificationReport(result, getAppVersion());
+    fs.writeFileSync(save.filePath, text, 'utf8');
+    return { ok: true, path: save.filePath };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('verify:disable-mode', () => {
+  settingsStore.updateSettings(app.getPath('userData'), { festivalVerifyEnabled: false });
+  buildAppMenu();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('verify:mode-changed', { enabled: false });
+  }
+  return { ok: true };
 });
 
 ipcMain.handle('settings:recent-add', (_, entry) => {
@@ -1173,6 +1279,7 @@ ipcMain.handle('screener:start', async (_, params) => {
 
 app.whenReady().then(async () => {
   activeConfig = loadDefaultConfig();
+  buildAppMenu();
   createWindow();
 
   // Start background update checking — first probe after 2s, then every 6h

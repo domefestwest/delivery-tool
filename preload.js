@@ -49,6 +49,16 @@ contextBridge.exposeInMainWorld('api', {
   updateSettings:  (partial) => ipcRenderer.invoke('settings:update', partial),
   addRecentEncode: (entry)   => ipcRenderer.invoke('settings:recent-add', entry),
 
+  // Festival Verify Mode (hidden expert feature for festival coordinators)
+  verifyDelivery:        (folderPath) => ipcRenderer.invoke('verify:run', { folderPath }),
+  saveVerificationReport: (result)    => ipcRenderer.invoke('verify:save-report', { result }),
+  disableVerifyMode:     ()           => ipcRenderer.invoke('verify:disable-mode'),
+  onVerifyModeChanged:   (cb) => {
+    const listener = (_, data) => cb(data);
+    ipcRenderer.on('verify:mode-changed', listener);
+    return () => ipcRenderer.removeListener('verify:mode-changed', listener);
+  },
+
   // Notifications
   notify:          (opts) => ipcRenderer.invoke('notify:encode-complete', opts),
 

@@ -4,6 +4,7 @@ import FestivalHeader from './components/FestivalHeader';
 import SourcePreview from './components/SourcePreview';
 import SettingsPanel from './components/SettingsPanel';
 import EncodeAction from './components/EncodeAction';
+import VerifyDeliveryPanel from './components/VerifyDeliveryPanel';
 import './App.css';
 
 export default function App() {
@@ -49,6 +50,10 @@ export default function App() {
   const [autoOpenFolder, setAutoOpenFolder]     = useState(true);
   const [preventSleep, setPreventSleep]         = useState(true);
 
+  // Festival Verify Mode — toggled from the View menu (View → Festival Tools).
+  // Hidden expert feature for festival coordinators; filmmakers never enable it.
+  const [verifyMode, setVerifyMode] = useState(false);
+
   const settingsHydrated = useRef(false);
 
   // Initial bootstrap
@@ -71,6 +76,7 @@ export default function App() {
         if (typeof sett.notifyOnComplete === 'boolean') setNotifyOnComplete(sett.notifyOnComplete);
         if (typeof sett.autoOpenFolderOnComplete === 'boolean') setAutoOpenFolder(sett.autoOpenFolderOnComplete);
         if (typeof sett.preventSleepDuringEncode === 'boolean') setPreventSleep(sett.preventSleepDuringEncode);
+        if (typeof sett.festivalVerifyEnabled === 'boolean') setVerifyMode(sett.festivalVerifyEnabled);
       }
 
       if (cfg?.video?.allowed_resolutions?.length) {
@@ -92,6 +98,13 @@ export default function App() {
       preventSleepDuringEncode: preventSleep,
     });
   }, [artistName, outputDir, useGPU, autoZip, notifyOnComplete, autoOpenFolder, preventSleep]);
+
+  // Listen for menu-driven toggles of Festival Verify Mode
+  useEffect(() => {
+    if (!window.api?.onVerifyModeChanged) return;
+    const off = window.api.onVerifyModeChanged(({ enabled }) => setVerifyMode(!!enabled));
+    return off;
+  }, []);
 
   const handleRecheck = useCallback(async () => {
     setDepStatus(null);
@@ -271,8 +284,14 @@ export default function App() {
         depStatus={depStatus}
         onLoadConfig={handleLoadConfig}
         onPresetChange={handlePresetChange}
+        verifyMode={verifyMode}
       />
 
+      {verifyMode ? (
+        <div className="app-scroll">
+          <VerifyDeliveryPanel />
+        </div>
+      ) : (
       <div className="app-scroll">
         {/* Two-column main area */}
         <div className="two-col">
@@ -354,6 +373,7 @@ export default function App() {
           autoOpenFolder={autoOpenFolder} preventSleep={preventSleep}
         />
       </div>
+      )}
     </div>
   );
 }

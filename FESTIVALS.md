@@ -252,6 +252,28 @@ These are the validated baseline values — they're what Dome Fest West uses in 
 
 ---
 
+## Verifying received deliveries (Festival Verify Mode)
+
+Once filmmakers start uploading their delivery folders to you, you'll want to confirm each one transferred intact and matches what was originally encoded. The tool has a built-in **Festival Verify Mode** for exactly this — hidden from filmmakers so they don't enable it accidentally.
+
+**To enable it:**
+
+1. Open the **View** menu
+2. **View → Festival Tools → Verify Delivery Mode** (toggle it on)
+
+The whole UI switches to verify mode (a `🏛 Verify Mode` chip appears in the header). Drag in any delivery folder you've received and the tool:
+
+- Reads the `delivery_report.txt` inside the folder
+- Re-hashes every video and audio file → compares MD5s to the report
+- Re-probes the video → confirms codec, resolution, frame rate, and bit depth all match what was originally encoded
+- Confirms all audio stems named in the report are present
+
+You get a pass / warn / fail verdict per check, plus a saveable **verification report** to file with each accepted submission. Click the chip (or the **View → Festival Tools → Verify Delivery Mode** menu item again) to turn the mode off and return to the encode interface.
+
+This mode is intentionally undocumented in the README and filmmaker-facing UI. Mention it to your coordinator team, not to artists.
+
+---
+
 ## Distribution checklist
 
 To run your festival on this tool:
