@@ -12,23 +12,37 @@ That's a real accomplishment. Fulldome festivals are competitive, and your work 
 
 ---
 
-## Why you can trust this tool with your film
+## What this tool actually does (and doesn't do)
 
-Under the hood, the tool uses **FFmpeg** — the industry-standard video encoder used by Netflix, YouTube, every major streaming service, and most professional film pipelines. We're not reinventing encoding. We're packaging FFmpeg with the exact settings each festival has approved, so you get every drop of quality your source has, in the format that plays back perfectly on dome systems.
+Let's be straight: **H.265 is lossy compression.** Your master file will be smaller than your source, and some information is mathematically discarded in the process. There is no codec that delivers dome-scale files at reasonable sizes without compression — that's just the reality of the medium right now.
 
-**What that means for your film:**
+What H.265 *does* give you is the best compression-to-quality ratio currently available for high-resolution, high-frame-rate content. Alongside VP9, it represents the current state of the art in broadcast-grade encoding, with mature 10-bit color science that handles smooth gradients, deep blacks, and color-rich imagery — the kind of imagery dome films rely on. It's the same codec family Netflix, Apple TV, and most broadcasters ship.
 
-| What the tool guarantees | Why it matters on the dome |
+Under the hood the tool uses **FFmpeg** — the same encoder behind nearly every professional streaming service — and applies the exact settings your festival has approved. The goal is to give you the most faithful compressed master that current codec technology allows, validated end-to-end so you know what's in the file matches what you submitted.
+
+**What this tool ensures in your encode:**
+
+| Setting | What it does for your film |
 |---|---|
-| **10-bit color depth** | Eliminates banding on smooth gradients — sky, space, washes — that's harshly visible on a 15m screen |
-| **CRF 18 quality floor** | Visually lossless; your dome master keeps every detail of your source |
+| **10-bit color depth** | Minimizes banding on smooth gradients — sky, space, washes — that 8-bit encodes tend to introduce |
+| **CRF 18 quality target** | High-quality compression — small visual differences from source, not large ones |
 | **Exact frame rate (30 or 60fps)** | No drop-frame, no sync drift mid-show |
-| **Source resolution enforced** | Never upscales — what comes in is what goes out, no fake high-resolution |
-| **Audio normalized to broadcast standard** | Loudness checked against the festival's target (typically -23 LUFS) |
-| **Every output verified post-encode** | If anything's off, you see it as a warning before you submit |
-| **MD5 checksums in the delivery report** | Festival can verify the file arrived intact |
+| **No upscaling, ever** | What comes in is what goes out — the tool refuses to fake a higher resolution |
+| **Audio loudness checked** | Compared against the festival's target (typically -23 LUFS); warns if off |
+| **Output re-probed after encode** | If the encoder produced something different than requested, you see it as a warning |
+| **MD5 checksums in the delivery report** | The festival can verify the file they received is byte-for-byte what you sent |
 
 You don't have to understand the technical details — that's why the tool exists. But if you ever want to, the delivery report explains exactly how your film was encoded.
+
+---
+
+## Why digital delivery (and why this tool exists)
+
+Traditionally, dome film delivery has meant shipping hard drives. For a festival with 50 films, that's 50 drives arriving, 50 going back, customs forms, tracking numbers, lost packages, drives formatted for the wrong OS. For you as the filmmaker, that's $100–300 per festival in drive + shipping costs, plus the lead time.
+
+Most fulldome festivals don't have the budget or staff to coordinate physical logistics at that scale. Digital delivery — a properly encoded H.265 master uploaded to a portal — is the only way smaller festivals can realistically accept high-quality work from filmmakers around the world.
+
+That's the trade-off this tool helps you make well: yes, your file is compressed, but it's compressed *as carefully as the current state of the art allows*, and in exchange both you and the festival skip the hard-drive shuffle entirely.
 
 ---
 
