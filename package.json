@@ -1,6 +1,6 @@
 {
   "name": "dome-festival-delivery-tool",
-  "version": "0.16.12",
+  "version": "0.16.13",
   "description": "Universal H.265 10-bit delivery encoder for fulldome film festivals — config-driven, cross-platform, open source",
   "main": "main.js",
   "homepage": "./",
