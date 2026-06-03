@@ -1,6 +1,6 @@
 {
   "name": "dome-festival-delivery-tool",
-  "version": "0.16.11",
+  "version": "0.16.12",
   "description": "Universal H.265 10-bit delivery encoder for fulldome film festivals — config-driven, cross-platform, open source",
   "main": "main.js",
   "homepage": "./",
@@ -48,27 +48,37 @@
       {
         "from": "ffmpeg/mac",
         "to": "ffmpeg/mac",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "ffmpeg/win",
         "to": "ffmpeg/win",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "ffmpeg/linux",
         "to": "ffmpeg/linux",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "presets",
         "to": "presets",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "examples",
         "to": "examples",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "mac": {
