@@ -34,3 +34,4 @@ npm-debug.log*
 # So we do NOT gitignore ffmpeg/
 build/
 build-resources/
+devtest-output/

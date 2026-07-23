@@ -138,6 +138,41 @@ When adding new pure modules, add tests. When adding I/O-heavy logic, factor out
 
 ---
 
+## Manual debugging without clicking through the UI
+
+Two scripts exist purely for fast iteration while debugging — neither is part of the shipped app.
+
+### `scripts/devtest.js` — headless CLI
+
+Talks directly to the same `src-main/*.js` modules the app uses — no Electron window, no IPC, instant feedback. Good for checking "what would the tool actually do here" without going through the UI.
+
+```bash
+npm run devtest -- presets                              # list bundled festival presets
+npm run devtest -- preset dfw-2027                       # dump one preset's full config
+npm run devtest -- resolution 8192 8192 dfw-2027         # what output resolutions does this source allow?
+npm run devtest -- encode-args dfw-2027 4K 30 --gpu       # print the exact ffmpeg argv (dry run, no ffmpeg spawned)
+npm run devtest -- verify ~/Desktop/Some_Delivery_Folder  # run Festival Verify Mode against a real folder
+npm run devtest -- report dfw-2027 4K 30                  # print a sample delivery_report.txt
+npm run devtest -- md5 ~/Desktop/some_big_file.mp4        # compute MD5 with live progress
+npm run devtest -- gpu darwin hevc                        # show GPU encoder candidates for a platform
+npm run devtest:all                                       # run everything above as one smoke test
+```
+
+Exit code is 0 on success, 1 if any check fails — safe to chain in a shell script.
+
+### `scripts/screenshot-sizes.js` — window-size / CSS regression check
+
+Launches the **real app** (same `main.js`, same IPC handlers as `npm start`) and resizes its window through a handful of sizes — including the app's declared 860×640 minimum — screenshotting each and flagging horizontal overflow (a proxy for "something is clipped or forcing an unwanted scrollbar").
+
+```bash
+npm run devtest:screenshots                        # all sizes: min, default, laptop, large, ultrawide, tall-narrow
+npm run devtest:screenshots -- --sizes=min,large    # just specific ones
+```
+
+Output lands in `devtest-output/` (gitignored). Note: on macOS, programmatic window resizing can trigger a transient native "size HUD" overlay that gets baked into the screenshot if captured too soon after resize — the script waits 1.5s after each resize before capturing to let it fade. If you see a gray pill with dimensions in a screenshot, that's the OS, not the app.
+
+---
+
 ## Building distribution installers
 
 ```bash

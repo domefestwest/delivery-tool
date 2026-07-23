@@ -13,7 +13,11 @@
     "dist:win": "npm run build && electron-builder --win",
     "dist:linux": "npm run build && electron-builder --linux",
     "release": "npm run build && electron-builder --publish always",
-    "test": "node test/cross-platform.test.js"
+    "test": "node test/cross-platform.test.js",
+    "devtest": "node scripts/devtest.js",
+    "devtest:all": "node scripts/devtest.js all",
+    "devtest:presets": "node scripts/devtest.js presets",
+    "devtest:screenshots": "npm run build && electron scripts/screenshot-sizes.js"
   },
   "build": {
     "appId": "org.domefestival.delivery-tool",

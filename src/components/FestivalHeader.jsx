@@ -60,15 +60,26 @@ export default function FestivalHeader({ config, depStatus, onLoadConfig, onPres
       <header style={{
         background: '#111',
         borderBottom: '1px solid #333',
-        padding: '0 24px',
+        padding: '8px 24px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        height: 52,
-        flexShrink: 0
+        minHeight: 52,
+        flexShrink: 0,
+        // At narrow window widths (down to the app's 860px minWidth), the left
+        // cluster (icon + preset + deadline) and right cluster (FFmpeg status)
+        // can together exceed the available width. Flex items don't shrink
+        // below their content size by default, so without this the overflow
+        // was silently clipped off the right edge of the window — invisible,
+        // with no scrollbar and no way to discover it was even there.
+        // flexWrap lets the right cluster drop to its own line instead —
+        // the header grows a little taller, but nothing is ever lost.
+        flexWrap: 'wrap',
+        rowGap: 6,
       }}>
-        {/* Left: festival branding */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        {/* Left: festival branding — flexShrink:0 so it scrolls rather than
+            getting squeezed/wrapped when the header overflows narrow windows */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, whiteSpace: 'nowrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {/* Festival icon — embedded data URL from config, falls back to 🎬 */}
             {config?.festival_icon ? (
@@ -212,7 +223,7 @@ export default function FestivalHeader({ config, depStatus, onLoadConfig, onPres
         </div>
 
         {/* Right cluster: verify-mode chip + update badge + FFmpeg status */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, whiteSpace: 'nowrap' }}>
           {verifyMode && (
             <button
               onClick={() => window.api.disableVerifyMode && window.api.disableVerifyMode()}
